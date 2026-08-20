@@ -1,4 +1,4 @@
-import type { EntryKind, EntryStatus, Priority, ProjectNode, SchedulePreset } from "@/lib/types";
+import type { AppSettings, Area, AssignedTo, DomainId, EntryKind, EntryStatus, KnowledgeStore, Priority, ProjectNode, PurchaseDetails, RecentContext, SchedulePreset, Visibility } from "@/lib/types";
 
 export type SmartIntent = EntryKind | "note" | "link" | "reminder" | "waiting" | "project_related" | "unknown";
 
@@ -20,6 +20,10 @@ export interface ParserContext {
   timezone: string;
   projects?: ProjectNode[];
   learnedRules?: LearnedRule[];
+  areas?: Area[];
+  knowledge?: KnowledgeStore;
+  recentContext?: RecentContext;
+  settings?: AppSettings;
 }
 
 export interface NormalizedInput {
@@ -67,6 +71,13 @@ export interface SmartParsedItem {
   kind: EntryKind;
   title: string;
   description?: string;
+  area?: string;
+  project?: string;
+  assignedTo?: AssignedTo;
+  visibility?: Visibility;
+  domain?: DomainId;
+  category?: string;
+  projectCandidate?: string;
   projectPath: string[];
   status: EntryStatus;
   priority: Priority;
@@ -77,6 +88,8 @@ export interface SmartParsedItem {
   totalPrice?: number;
   currency?: string;
   url?: string;
+  purchase?: PurchaseDetails;
+  notes?: string;
   needsReview?: boolean;
   sourceText: string;
   originalInput: string;

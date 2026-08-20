@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { parseSmartInput } from "@/lib/smart-parser";
+import { defaultKnowledge, defaultSettings } from "@/lib/storage";
 
 const now = new Date("2026-08-20T10:00:00.000Z");
 const ctx = { timezone: "Europe/Moscow", now };
+const familyCtx = {
+  timezone: "Europe/Moscow",
+  now,
+  knowledge: defaultKnowledge,
+  settings: defaultSettings,
+  projects: [{ id: "music-grafton", name: "Grafton", area: "Музыка", aliases: ["grafton"], createdAt: now.toISOString() }]
+};
 
 describe("parseSmartInput", () => {
   const cases = [
@@ -131,5 +139,88 @@ describe("parseSmartInput", () => {
     const result = parseSmartInput("Купить краску и идея потом добавить подсветку.", ctx);
     expect(result.items).toHaveLength(2);
     expect(result.items.map((item) => item.kind)).toEqual(["purchase", "idea"]);
+  });
+
+  it("detects music task and existing Grafton project", () => {
+    const result = parseSmartInput("Трек Grafton надо свести.", familyCtx);
+    expect(result.items[0]?.kind).toBe("task");
+    expect(result.items[0]?.area).toBe("Музыка");
+    expect(result.items[0]?.project).toBe("Grafton");
+    expect(result.items[0]?.category).toBe("Сведение");
+  });
+
+  it("matches follow-up Grafton phrase to existing project", () => {
+    const result = parseSmartInput("По Grafton ещё мастер сделать.", familyCtx);
+    expect(result.items[0]?.project).toBe("Grafton");
+    expect(result.items[0]?.category).toBe("Мастеринг");
+  });
+
+  it("creates a project candidate for unknown music entity", () => {
+    const result = parseSmartInput("Трек Solaris надо свести.", { ...familyCtx, projects: [] });
+    expect(result.items[0]?.area).toBe("Музыка");
+    expect(result.items[0]?.projectCandidate).toBe("Solaris");
+  });
+
+  it("parses home paint purchase with total price", () => {
+    const result = parseSmartInput("Для гардероба купить две банки краски по 1800.", familyCtx);
+    expect(result.items[0]?.kind).toBe("purchase");
+    expect(result.items[0]?.area).toBe("Дом");
+    expect(result.items[0]?.quantity).toBe(2);
+    expect(result.items[0]?.totalPrice).toBe(3600);
+  });
+
+  it("keeps paint allocation notes", () => {
+    const result = parseSmartInput("Для гардероба надо купить две банки краски, одну на стену, одну на сам гардероб, по 1800 рублей каждая.", familyCtx);
+    expect(result.items[0]?.notes).toContain("стену");
+  });
+
+  it("splits shared home shopping into two purchases", () => {
+    const result = parseSmartInput("Нам домой надо купить порошок и туалетную бумагу.", familyCtx);
+    expect(result.items).toHaveLength(2);
+    expect(result.items.every((item) => item.kind === "purchase")).toBe(true);
+    expect(result.items.every((item) => item.assignedTo === "shared")).toBe(true);
+  });
+
+  it("detects personal assignee and tomorrow", () => {
+    const result = parseSmartInput("Мне завтра надо написать Андрею.", familyCtx);
+    expect(result.items[0]?.assignedTo).toBe("me");
+    expect(result.items[0]?.schedule).toBe("tomorrow");
+  });
+
+  it("detects partner assignee", () => {
+    const result = parseSmartInput("Ей надо купить кабель.", familyCtx);
+    expect(result.items[0]?.assignedTo).toBe("partner");
+  });
+
+  it("keeps unknown vague text in review", () => {
+    const result = parseSmartInput("Там с этой штукой надо разобраться.", familyCtx);
+    expect(result.needsReview).toBe(true);
+  });
+
+  it("splits music, home purchase, and idea dictation", () => {
+    const result = parseSmartInput("Завтра свести Grafton, купить домой порошок и идея сделать новую подсветку в студии.", familyCtx);
+    expect(result.items).toHaveLength(3);
+    expect(result.items.map((item) => item.kind)).toEqual(["task", "purchase", "idea"]);
+  });
+
+  it("uses recent context for short follow-up", () => {
+    const result = parseSmartInput("И ещё петли четыре штуки.", {
+      ...familyCtx,
+      recentContext: { area: "Дом", project: "Гардероб", domain: "home", updatedAt: new Date().toISOString() }
+    });
+    expect(result.items[0]?.project).toBe("Гардероб");
+  });
+
+  it("does not use expired recent context", () => {
+    const result = parseSmartInput("И ещё петли четыре штуки.", {
+      ...familyCtx,
+      recentContext: { area: "Дом", project: "Гардероб", domain: "home", updatedAt: "2020-01-01T00:00:00.000Z" }
+    });
+    expect(result.items[0]?.project).not.toBe("Гардероб");
+  });
+
+  it("marks someday phrases as someday", () => {
+    const result = parseSmartInput("Когда-нибудь купить новый контроллер.", familyCtx);
+    expect(result.items[0]?.schedule).toBe("someday");
   });
 });

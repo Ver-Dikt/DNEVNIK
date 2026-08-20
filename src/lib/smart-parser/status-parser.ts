@@ -1,6 +1,6 @@
-import type { EntryStatus } from "@/lib/types";
+import type { EntryKind, EntryStatus } from "@/lib/types";
 
-export function parseStatus(text: string, kind: "task" | "purchase" | "idea" | "inbox"): { status: EntryStatus; confidence: number } {
+export function parseStatus(text: string, kind: EntryKind): { status: EntryStatus; confidence: number } {
   if (/\b(жду|ожидаю|после ответа|после звонка)\b/i.test(text)) return { status: "waiting", confidence: 0.88 };
   if (kind === "purchase") {
     if (/\b(заказано|заказал)\b/i.test(text)) return { status: "ordered", confidence: 0.86 };

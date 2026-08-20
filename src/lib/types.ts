@@ -1,4 +1,4 @@
-export type EntryKind = "task" | "purchase" | "idea" | "inbox";
+export type EntryKind = "task" | "purchase" | "idea" | "note" | "inbox";
 export type ParsedBy = "local" | "ai" | "manual";
 export type EntryStatus =
   | "active"
@@ -19,13 +19,61 @@ export type SchedulePreset =
   | "this_month"
   | "someday"
   | "none";
+export type AssignedTo = "me" | "partner" | "shared";
+export type Visibility = "private" | "shared";
+export type PurchaseStatus = "planned" | "researching" | "selected" | "ordered" | "purchased" | "cancelled";
+export type DomainId = "music" | "home" | "studio_equipment" | "general";
+
+export interface Member {
+  id: "me" | "partner";
+  name: string;
+  role: "owner" | "partner";
+  avatar: string;
+  createdAt: string;
+}
+
+export interface Area {
+  id: string;
+  name: string;
+  icon?: string;
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+}
+
+export interface PurchaseDetails {
+  quantity?: number;
+  unit?: string;
+  unitPrice?: number;
+  totalPrice?: number;
+  currency?: string;
+  store?: string;
+  url?: string;
+  status: PurchaseStatus;
+  actualPrice?: number;
+  purchasedAt?: string;
+  priceHistory?: Array<{
+    amount: number;
+    currency: string;
+    createdAt: string;
+    note?: string;
+  }>;
+}
 
 export interface DiaryEntry {
   id: string;
   kind: EntryKind;
   title: string;
   description?: string;
+  area?: string;
+  project?: string;
   projectPath: string[];
+  assignedTo?: AssignedTo;
+  visibility?: Visibility;
+  createdBy?: Member["id"];
+  updatedBy?: Member["id"];
+  domain?: DomainId;
+  category?: string;
   status: EntryStatus;
   priority: Priority;
   dueDate?: string;
@@ -36,6 +84,7 @@ export interface DiaryEntry {
   currency?: string;
   store?: string;
   url?: string;
+  purchase?: PurchaseDetails;
   notes?: string;
   needsReview?: boolean;
   sourceText?: string;
@@ -51,15 +100,20 @@ export interface DiaryEntry {
   };
   createdAt: string;
   updatedAt: string;
+  revision?: number;
   completedAt?: string;
 }
 
 export interface ProjectNode {
   id: string;
   name: string;
+  area?: string;
   parentId?: string;
   aliases?: string[];
   createdAt: string;
+  updatedAt?: string;
+  revision?: number;
+  candidate?: boolean;
 }
 
 export interface AppSettings {
@@ -70,6 +124,65 @@ export interface AppSettings {
   timezone: string;
   autoSaveAfterParse: boolean;
   advancedMode: boolean;
+  defaultPersonalAssignee: AssignedTo;
+  defaultHomePurchaseAssignee: AssignedTo;
+  askBeforeCreatingProject: boolean;
+  learnFromCorrections: boolean;
+  recentContextMinutes: number;
+  monthlyBudget?: number;
+  appearance: "system" | "light" | "dark";
+}
+
+export interface KnowledgeStore {
+  domains: Record<string, { area: string; keywords: string[] }>;
+  aliases: Record<string, string>;
+  knownEntities: Record<string, { area?: string; project?: string; domain?: DomainId }>;
+  projectAliases: Record<string, string[]>;
+  phraseMappings: Record<string, { area?: string; project?: string; intent?: EntryKind }>;
+  corrections: Array<{ id: string; phrase: string; patch: Partial<DiaryEntry>; createdAt: string }>;
+}
+
+export interface SavingsGoal {
+  id: string;
+  title: string;
+  targetAmount: number;
+  currentAmount: number;
+  currency: string;
+  deadline?: string;
+  createdBy: Member["id"];
+  visibility: Visibility;
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+}
+
+export interface FinanceTransaction {
+  id: string;
+  type: "planned_purchase" | "purchase_actual" | "savings_deposit" | "savings_withdrawal";
+  amount: number;
+  currency: string;
+  relatedEntryId?: string;
+  relatedGoalId?: string;
+  createdAt: string;
+}
+
+export interface RecentContext {
+  area?: string;
+  project?: string;
+  domain?: DomainId;
+  updatedAt: string;
+}
+
+export interface DraftState {
+  quickText: string;
+  voiceTranscription?: string;
+  timestamp: string;
+  source: "typing" | "voice";
+}
+
+export interface PreviewState {
+  preview: AIParseResult;
+  timestamp: string;
 }
 
 export interface AIParseInput {
@@ -83,6 +196,11 @@ export interface AIParseInput {
     createdAt: string;
   }>;
   projects?: ProjectNode[];
+  areas?: Area[];
+  members?: Member[];
+  knowledge?: KnowledgeStore;
+  recentContext?: RecentContext;
+  settings?: AppSettings;
 }
 
 export interface AIParseResult {
@@ -90,6 +208,7 @@ export interface AIParseResult {
   items: Array<
     Omit<DiaryEntry, "id" | "createdAt" | "updatedAt"> & {
       title: string;
+      projectCandidate?: string;
     }
   >;
   rawText: string;

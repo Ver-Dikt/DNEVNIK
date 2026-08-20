@@ -19,13 +19,43 @@ import {
   WalletCards
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { addToSavingsGoal, calculateBudget, createSavingsGoal, parseSavingsCommand } from "@/lib/finance";
 import { createEntryFromParsed } from "@/lib/mock-ai";
 import { formatDateRu, isOverdue, isThisWeek, todayIso } from "@/lib/dates";
 import { clearLearnedRules, loadLearnedRules, rememberIntentRule, saveLearnedRules } from "@/lib/smart-parser/learned-rules";
 import { parseSmartInput } from "@/lib/smart-parser";
-import { clearAllDnevnikStorage, clearEntriesStorage, defaultSettings, loadEntries, loadSettings, saveEntries, saveSettings, storageVersion } from "@/lib/storage";
+import {
+  clearAllDnevnikStorage,
+  clearEntriesStorage,
+  defaultAreas,
+  defaultKnowledge,
+  defaultSettings,
+  exportDnevnikData,
+  importDnevnikData,
+  loadAreas,
+  loadDraft,
+  loadEntries,
+  loadFinanceTransactions,
+  loadKnowledge,
+  loadMembers,
+  loadPreviewState,
+  loadProjects,
+  loadSavingsGoals,
+  loadSettings,
+  saveAreas,
+  saveDraft,
+  saveEntries,
+  saveFinanceTransactions,
+  saveKnowledge,
+  saveMembers,
+  savePreviewState,
+  saveProjects,
+  saveSavingsGoals,
+  saveSettings,
+  storageVersion
+} from "@/lib/storage";
 import { GlassBadge, GlassButton, GlassCard, GlassInput, GlassPanel, GlassSegmentedControl, GlassTextarea } from "@/components/glass";
-import type { AIParseResult, AIQueryResult, AppSettings, DiaryEntry, EntryKind, ProjectNode, SchedulePreset } from "@/lib/types";
+import type { AIParseResult, AIQueryResult, AppSettings, Area, AssignedTo, DiaryEntry, EntryKind, FinanceTransaction, KnowledgeStore, Member, ProjectNode, SchedulePreset, SavingsGoal } from "@/lib/types";
 import type { LearnedRule } from "@/lib/smart-parser/types";
 
 type BrowserSpeechRecognition = {
@@ -53,11 +83,14 @@ declare global {
 const tabs = [
   { id: "today", label: "Сегодня", icon: CalendarDays },
   { id: "week", label: "Неделя", icon: Clock3 },
+  { id: "all", label: "Все записи", icon: Check },
   { id: "tasks", label: "Задачи", icon: Check },
   { id: "projects", label: "Проекты", icon: Archive },
   { id: "purchases", label: "Покупки", icon: ShoppingCart },
+  { id: "budget", label: "Бюджет", icon: WalletCards },
   { id: "ideas", label: "Идеи", icon: Lightbulb },
-  { id: "inbox", label: "Inbox", icon: Inbox },
+  { id: "someday", label: "Когда-нибудь", icon: Clock3 },
+  { id: "inbox", label: "Разобрать", icon: Inbox },
   { id: "settings", label: "Ещё", icon: MoreHorizontal }
 ] as const;
 
@@ -67,13 +100,15 @@ const kindLabel: Record<EntryKind, string> = {
   task: "Задача",
   purchase: "Покупка",
   idea: "Идея",
-  inbox: "Inbox"
+  note: "Заметка",
+  inbox: "Разобрать"
 };
 
 const kindTone: Record<EntryKind, string> = {
   task: "text-blue-700 dark:text-blue-200",
   purchase: "text-emerald-700 dark:text-emerald-200",
   idea: "text-fuchsia-700 dark:text-fuchsia-200",
+  note: "text-zinc-700 dark:text-zinc-200",
   inbox: "text-zinc-700 dark:text-zinc-200"
 };
 
@@ -82,9 +117,16 @@ type PreviewItem = AIParseResult["items"][number];
 
 export default function Home() {
   const [entries, setEntries] = useState<DiaryEntry[]>([]);
+  const [storedProjects, setStoredProjects] = useState<ProjectNode[]>([]);
+  const [areas, setAreas] = useState<Area[]>(defaultAreas);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [knowledge, setKnowledge] = useState<KnowledgeStore>(defaultKnowledge);
+  const [financeTransactions, setFinanceTransactions] = useState<FinanceTransaction[]>([]);
+  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [learnedRules, setLearnedRules] = useState<LearnedRule[]>([]);
   const [activeTab, setActiveTab] = useState<TabId>("today");
+  const [ownerFilter, setOwnerFilter] = useState<"me" | "shared" | "all">("all");
   const [quickText, setQuickText] = useState("");
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState<AIQueryResult | null>(null);
@@ -101,6 +143,8 @@ export default function Home() {
   const [editingPreviewIndex, setEditingPreviewIndex] = useState<number | null>(null);
   const [highlightEntryId, setHighlightEntryId] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const [selectedArea, setSelectedArea] = useState<string | null>(null);
+  const [draftRecovered, setDraftRecovered] = useState(false);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const keepListeningRef = useRef(false);
   const voiceBaseTextRef = useRef("");
@@ -113,8 +157,21 @@ export default function Home() {
     // localStorage is only available after hydration; this keeps server render deterministic.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setEntries(loadEntries());
+    setStoredProjects(loadProjects());
+    setAreas(loadAreas());
+    setMembers(loadMembers());
+    setKnowledge(loadKnowledge());
+    setFinanceTransactions(loadFinanceTransactions());
+    setSavingsGoals(loadSavingsGoals());
     setSettings(loadSettings());
     setLearnedRules(loadLearnedRules());
+    const draft = loadDraft();
+    const savedPreview = loadPreviewState();
+    if (draft?.quickText) {
+      setQuickText(draft.quickText);
+      setDraftRecovered(true);
+    }
+    if (savedPreview?.preview) setPreview(savedPreview.preview);
     setIsHydrated(true);
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register(`${appBasePath}/sw.js`, { scope: `${appBasePath || "/"}` }).catch(() => undefined);
@@ -127,8 +184,45 @@ export default function Home() {
   }, [entries, isHydrated]);
 
   useEffect(() => {
+    if (!isHydrated) return;
+    saveProjects(storedProjects);
+  }, [storedProjects, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    saveAreas(areas);
+  }, [areas, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    saveMembers(members);
+  }, [members, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    saveKnowledge(knowledge);
+  }, [knowledge, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    saveFinanceTransactions(financeTransactions);
+  }, [financeTransactions, isHydrated]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    saveSavingsGoals(savingsGoals);
+  }, [savingsGoals, isHydrated]);
+
+  useEffect(() => {
     latestQuickTextRef.current = quickText;
-  }, [quickText]);
+    if (!isHydrated) return;
+    saveDraft(quickText.trim() ? { quickText, timestamp: new Date().toISOString(), source: isListening ? "voice" : "typing" } : null);
+  }, [quickText, isHydrated, isListening]);
+
+  useEffect(() => {
+    if (!isHydrated) return;
+    savePreviewState(preview ? { preview, timestamp: new Date().toISOString() } : null);
+  }, [preview, isHydrated]);
 
   useEffect(() => {
     if (!toast) return;
@@ -138,23 +232,38 @@ export default function Home() {
 
   const projects = useMemo<ProjectNode[]>(() => {
     const names = new Map<string, ProjectNode>();
+    for (const project of storedProjects) {
+      names.set(`${project.area ?? ""}/${project.name}`, project);
+    }
     for (const entry of entries) {
-      for (const name of entry.projectPath) {
-        if (!names.has(name)) {
-          names.set(name, { id: name, name, aliases: [], createdAt: entry.createdAt });
-        }
+      const area = entry.area ?? entry.projectPath[0];
+      const name = entry.project ?? entry.projectPath.at(-1);
+      if (name && !names.has(`${area ?? ""}/${name}`)) {
+        names.set(`${area ?? ""}/${name}`, { id: `${area ?? ""}-${name}`, name, area, aliases: [], createdAt: entry.createdAt, updatedAt: entry.updatedAt, revision: entry.revision });
       }
     }
     return [...names.values()];
-  }, [entries]);
+  }, [entries, storedProjects]);
 
   const activeEntries = entries.filter((entry) => entry.status !== "done" && entry.status !== "cancelled");
   const todayEntries = activeEntries.filter((entry) => entry.dueDate === todayIso() || entry.schedule === "today" || isOverdue(entry.dueDate));
   const importantEntries = activeEntries.filter((entry) => entry.priority === "high");
-  const purchaseTotal = activeEntries.filter((entry) => entry.kind === "purchase").reduce((sum, entry) => sum + (entry.totalPrice ?? entry.unitPrice ?? 0), 0);
+  const budgetSummary = useMemo(() => calculateBudget(entries), [entries]);
+  const purchaseTotal = budgetSummary.planned + budgetSummary.actual;
+  const recentContext = useMemo(() => {
+    const latest = entries.find((entry) => entry.area || entry.project || entry.domain);
+    return latest
+      ? {
+          area: latest.area,
+          project: latest.project,
+          domain: latest.domain,
+          updatedAt: latest.updatedAt
+        }
+      : undefined;
+  }, [entries]);
 
   const visibleEntries = useMemo(() => {
-    const base = entries.filter((entry) => entry.status !== "cancelled");
+    const base = entries.filter((entry) => entry.status !== "cancelled" && matchesOwner(entry, ownerFilter));
     if (activeTab === "today") {
       return base.filter(
         (entry) =>
@@ -170,10 +279,12 @@ export default function Home() {
     if (activeTab === "tasks") return base.filter((entry) => entry.kind === "task");
     if (activeTab === "purchases") return base.filter((entry) => entry.kind === "purchase");
     if (activeTab === "ideas") return base.filter((entry) => entry.kind === "idea");
-    if (activeTab === "inbox") return base.filter((entry) => entry.kind === "inbox" || entry.needsReview);
+    if (activeTab === "someday") return base.filter((entry) => entry.schedule === "someday");
+    if (activeTab === "inbox") return base.filter((entry) => entry.needsReview);
     if (activeTab === "projects") return base.filter((entry) => entry.projectPath.length);
+    if (activeTab === "budget") return base.filter((entry) => entry.kind === "purchase");
     return base;
-  }, [activeTab, entries, listMode]);
+  }, [activeTab, entries, listMode, ownerFilter]);
 
   async function parseText(inputText: string, options: { autoSaveEligible?: boolean; source?: "voice" | "button" } = {}) {
     const text = inputText.trim();
@@ -185,7 +296,11 @@ export default function Home() {
       const result = parseSmartInput(text, {
         timezone: settings.timezone,
         learnedRules,
-        projects
+        projects,
+        areas,
+        knowledge,
+        recentContext,
+        settings
       });
 
         if (!result.items.length) {
@@ -229,6 +344,22 @@ export default function Home() {
   async function parseQuickText() {
     const text = quickText.trim();
     if (!text) return;
+    const savingsCommand = parseSavingsCommand(text);
+    if (savingsCommand?.action === "create" && savingsCommand.amount) {
+      addSavingsGoal(savingsCommand.title, savingsCommand.amount);
+      setQuickText("");
+      setToast({ title: "Накопление создано", detail: `${savingsCommand.title}: ${savingsCommand.amount.toLocaleString("ru-RU")} ${settings.defaultCurrency}` });
+      return;
+    }
+    if (savingsCommand?.action === "deposit" && savingsCommand.amount) {
+      const goal = savingsGoals.find((item) => textMatches(item.title, savingsCommand.title));
+      if (goal) {
+        depositSavings(goal.id, savingsCommand.amount);
+        setQuickText("");
+        setToast({ title: "Накопление обновлено", detail: `${goal.title}: +${savingsCommand.amount.toLocaleString("ru-RU")} ${goal.currency}` });
+        return;
+      }
+    }
     await parseText(text, { source: "button" });
   }
 
@@ -236,10 +367,15 @@ export default function Home() {
     const now = new Date().toISOString();
     const entry: DiaryEntry = {
       id: crypto.randomUUID(),
-      kind: "inbox",
+      kind: "note",
       title: text.slice(0, 86) || "Неразобранная запись",
       description: text,
+      area: "Личное",
       projectPath: [],
+      assignedTo: "me",
+      visibility: "private",
+      createdBy: "me",
+      updatedBy: "me",
       status: "active",
       priority: "normal",
       schedule: "none",
@@ -255,7 +391,7 @@ export default function Home() {
     setQuickText("");
     setPreview(null);
     setVoiceMessage(message);
-    setToast({ title: "Сохранено в Inbox", detail: message });
+    setToast({ title: "Сохранено в Разобрать", detail: message });
   }
 
   function toggleVoiceInput() {
@@ -343,13 +479,20 @@ export default function Home() {
   function addManual(kind: EntryKind) {
     const now = new Date().toISOString();
     const text = quickText.trim();
+    const area = kind === "purchase" ? "Дом" : "Личное";
+    const assignedTo = kind === "purchase" ? settings.defaultHomePurchaseAssignee : settings.defaultPersonalAssignee;
     addEntries([
       {
         id: crypto.randomUUID(),
         kind,
         title: text || "Новая запись",
         description: text,
+        area,
         projectPath: [],
+        assignedTo,
+        visibility: assignedTo === "shared" ? "shared" : "private",
+        createdBy: "me",
+        updatedBy: "me",
         status: kind === "purchase" ? "want_to_buy" : "active",
         priority: "normal",
         schedule: "none",
@@ -369,24 +512,30 @@ export default function Home() {
 
   function savePreview() {
     if (!preview) return;
-    const saved = preview.items.map(createEntryFromParsed);
+    const saved = preview.items.map(createConfirmedEntry);
     addEntries(saved);
     setPreview(null);
     setQuickText("");
+    saveDraft(null);
+    savePreviewState(null);
     setVoiceMessage("Готово. Можно продолжать следующую диктовку.");
     showSaveToast(saved);
   }
 
   function savePreviewItem(index: number) {
     if (!preview?.items[index]) return;
-    const saved = createEntryFromParsed(preview.items[index]);
+    const saved = createConfirmedEntry(preview.items[index]);
     addEntries([saved]);
     setPreview((current) => {
       if (!current) return null;
       const nextItems = current.items.filter((_, itemIndex) => itemIndex !== index);
       return nextItems.length ? { ...current, items: nextItems } : null;
     });
-    if (preview.items.length === 1) setQuickText("");
+    if (preview.items.length === 1) {
+      setQuickText("");
+      saveDraft(null);
+      savePreviewState(null);
+    }
     setHighlightEntryId(saved.id);
     setVoiceMessage("Готово. Можно продолжать следующую диктовку.");
     setToastForSaved([saved]);
@@ -407,6 +556,46 @@ export default function Home() {
 
   function showSaveToast(saved: DiaryEntry[]) {
     setToastForSaved(saved);
+  }
+
+  function createConfirmedEntry(item: PreviewItem): DiaryEntry {
+    const saved = createEntryFromParsed({
+      ...item,
+      kind: item.kind === "inbox" ? "note" : item.kind,
+      needsReview: false,
+      project: item.project ?? item.projectCandidate,
+      area: item.area ?? item.projectPath[0],
+      projectPath: item.projectPath.length ? item.projectPath : [item.area, item.project ?? item.projectCandidate].filter(Boolean) as string[]
+    });
+    if (item.projectCandidate && (item.area || item.projectPath[0])) {
+      confirmProjectCandidate(item.projectCandidate, item.area ?? item.projectPath[0] ?? "Личное", item.domain);
+    }
+    return {
+      ...saved,
+      needsReview: false,
+      revision: saved.revision ?? 1,
+      createdBy: saved.createdBy ?? "me",
+      updatedBy: "me"
+    };
+  }
+
+  function confirmProjectCandidate(name: string, area: string, domain?: DiaryEntry["domain"]) {
+    setStoredProjects((current) => {
+      if (current.some((project) => project.name.toLowerCase() === name.toLowerCase() && project.area === area)) return current;
+      const now = new Date().toISOString();
+      return [{ id: `${area}-${name}`, name, area, aliases: [name.toLowerCase()], createdAt: now, updatedAt: now, revision: 1 }, ...current];
+    });
+    setKnowledge((current) => ({
+      ...current,
+      knownEntities: {
+        ...current.knownEntities,
+        [name.toLowerCase()]: { area, project: name, domain }
+      },
+      projectAliases: {
+        ...current.projectAliases,
+        [name]: [...(current.projectAliases[name] ?? []), name.toLowerCase()]
+      }
+    }));
   }
 
   function setToastForSaved(saved: DiaryEntry[]) {
@@ -460,7 +649,7 @@ export default function Home() {
   async function askDiary() {
     const value = query.trim();
     if (!value) return;
-    setAnswer(answerDiaryLocally(value, entries));
+    setAnswer(answerDiaryLocally(value, entries, savingsGoals));
   }
 
   function completeEntry(entry: DiaryEntry) {
@@ -508,6 +697,56 @@ export default function Home() {
     setToast({ title: "Все данные очищены", detail: "Старая тестовая база больше не подмешивается." });
   }
 
+  function exportLocalData() {
+    const data = exportDnevnikData();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `dnevnik-export-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function importLocalData(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const ok = importDnevnikData(JSON.parse(String(reader.result)));
+        if (!ok) throw new Error("Invalid export");
+        setEntries(loadEntries());
+        setStoredProjects(loadProjects());
+        setAreas(loadAreas());
+        setMembers(loadMembers());
+        setKnowledge(loadKnowledge());
+        setFinanceTransactions(loadFinanceTransactions());
+        setSavingsGoals(loadSavingsGoals());
+        setSettings(loadSettings());
+        setToast({ title: "Импорт выполнен", detail: "Данные восстановлены из JSON." });
+      } catch {
+        setToast({ title: "Импорт не выполнен", detail: "Файл не похож на экспорт Ежедневника." });
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function addSavingsGoal(title: string, amount: number) {
+    if (!title.trim() || amount <= 0) return;
+    setSavingsGoals((current) => [createSavingsGoal(title.trim(), amount, settings.defaultCurrency), ...current]);
+  }
+
+  function depositSavings(goalId: string, amount: number) {
+    if (amount <= 0) return;
+    setSavingsGoals((current) =>
+      current.map((goal) => {
+        if (goal.id !== goalId) return goal;
+        const result = addToSavingsGoal(goal, amount);
+        setFinanceTransactions((transactions) => [result.transaction, ...transactions]);
+        return result.goal;
+      })
+    );
+  }
+
   function selectTab(tab: TabId) {
     setActiveTab(tab);
     if (tab !== "projects") setSelectedProject(null);
@@ -536,6 +775,42 @@ export default function Home() {
 
       <div className="min-w-0 space-y-5">
         <Header todayCount={todayEntries.length} importantCount={importantEntries.length} />
+
+        {draftRecovered ? (
+          <GlassPanel className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <div>
+              <div className="font-black">У вас осталась незавершённая запись</div>
+              <p className="text-sm text-[var(--muted)]">Текст восстановлен из локального черновика.</p>
+            </div>
+            <div className="flex gap-2">
+              <GlassButton className="px-4 font-bold" onClick={() => setDraftRecovered(false)}>
+                Продолжить
+              </GlassButton>
+              <GlassButton
+                className="px-4 font-bold"
+                onClick={() => {
+                  setQuickText("");
+                  setDraftRecovered(false);
+                  saveDraft(null);
+                }}
+              >
+                Удалить
+              </GlassButton>
+            </div>
+          </GlassPanel>
+        ) : null}
+
+        {(activeTab === "today" || activeTab === "week") ? (
+          <GlassSegmentedControl
+            onChange={(value) => setOwnerFilter(value as "me" | "shared" | "all")}
+            options={[
+              { label: "Моё", value: "me" },
+              { label: "Общее", value: "shared" },
+              { label: "Всё", value: "all" }
+            ]}
+            value={ownerFilter}
+          />
+        ) : null}
 
         <GlassPanel className="overflow-hidden p-4 sm:p-5">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
@@ -653,22 +928,36 @@ export default function Home() {
               onClearAll={clearEverything}
               onClearEntries={clearAllEntries}
               onClearRules={clearRules}
+              onExport={exportLocalData}
+              onImport={importLocalData}
               onNavigate={selectTab}
+              members={members}
               settings={settings}
               onChange={updateSettings}
               rulesCount={learnedRules.length}
               storageVersionLabel={isHydrated ? storageVersion() : "2"}
             />
+          ) : activeTab === "budget" ? (
+            <BudgetPanel
+              budget={budgetSummary}
+              goals={savingsGoals}
+              onAddGoal={(title, amount) => addSavingsGoal(title, amount)}
+              onDeposit={(goalId, amount) => depositSavings(goalId, amount)}
+            />
           ) : activeTab === "projects" ? (
             <ProjectBoard
+              areas={areas}
               entries={entries}
               highlightedId={highlightEntryId}
               onBack={() => setSelectedProject(null)}
+              onBackArea={() => setSelectedArea(null)}
               onComplete={completeEntry}
               onDelete={deleteEntry}
               onSelect={setSelectedProject}
+              onSelectArea={setSelectedArea}
               onUpdate={updateEntry}
               projects={projects}
+              selectedArea={selectedArea}
               selectedProject={selectedProject}
             />
           ) : (
@@ -705,7 +994,17 @@ export default function Home() {
       </div>
 
       <MobileDock activeTab={activeTab} onAdd={openQuickSheet} onChange={selectTab} />
-      {quickSheetOpen ? <QuickInputSheet onClose={() => setQuickSheetOpen(false)} onText={focusTextInput} onVoice={startVoiceFromSheet} /> : null}
+      {quickSheetOpen ? (
+        <QuickInputSheet
+          onClose={() => setQuickSheetOpen(false)}
+          onManual={(kind) => {
+            setQuickSheetOpen(false);
+            addManual(kind);
+          }}
+          onText={focusTextInput}
+          onVoice={startVoiceFromSheet}
+        />
+      ) : null}
       {editingPreviewIndex !== null && preview?.items[editingPreviewIndex] ? (
         <PreviewEditSheet
           item={preview.items[editingPreviewIndex]}
@@ -718,12 +1017,32 @@ export default function Home() {
   );
 }
 
-function answerDiaryLocally(query: string, entries: DiaryEntry[]): AIQueryResult {
+function answerDiaryLocally(query: string, entries: DiaryEntry[], savingsGoals: SavingsGoal[]): AIQueryResult {
   const normalized = query.toLowerCase();
   const active = entries.filter((entry) => entry.status !== "done" && entry.status !== "cancelled");
   const purchases = active.filter((entry) => entry.kind === "purchase");
   const repair = active.filter((entry) => entry.projectPath.join(" ").toLowerCase().includes("ремонт"));
   const today = active.filter((entry) => entry.dueDate === todayIso() || entry.schedule === "today");
+  const planned = calculateBudget(entries).planned;
+
+  const projectQuestion = normalized.match(/что\s+по\s+(.+?)[?.!]?$/i);
+  if (projectQuestion) {
+    const needle = projectQuestion[1].trim().toLowerCase();
+    const related = active.filter((entry) => textMatches(`${entry.title} ${entry.project ?? ""} ${entry.area ?? ""}`, needle));
+    return {
+      answer: related.length ? `По ${projectQuestion[1]}: ${related.map((item) => item.title).join(", ")}.` : "По этому проекту активных записей не нашлось.",
+      relatedIds: related.map((item) => item.id)
+    };
+  }
+
+  const savingsQuery = parseSavingsCommand(normalized);
+  if (savingsQuery?.action === "query") {
+    const goal = savingsGoals.find((item) => textMatches(item.title, savingsQuery.title));
+    return {
+      answer: goal ? `На ${goal.title} осталось накопить ${(goal.targetAmount - goal.currentAmount).toLocaleString("ru-RU")} ${goal.currency}.` : "Такого накопления пока нет.",
+      relatedIds: []
+    };
+  }
 
   if (normalized.includes("куп")) {
     const total = purchases.reduce((sum, item) => sum + (item.totalPrice ?? item.unitPrice ?? 0), 0);
@@ -747,9 +1066,16 @@ function answerDiaryLocally(query: string, entries: DiaryEntry[]): AIQueryResult
     };
   }
 
+  if (normalized.includes("запланировано") || normalized.includes("бюджет")) {
+    return {
+      answer: `Запланировано покупок на ${planned.toLocaleString("ru-RU")} ₽.`,
+      relatedIds: purchases.map((item) => item.id)
+    };
+  }
+
   return {
-    answer: active.length ? `Активных записей: ${active.length}. Самое свежее: ${active[0]?.title}.` : "Активных записей пока нет.",
-    relatedIds: active.slice(0, 5).map((item) => item.id)
+    answer: "Для такого вопроса потребуется AI-провайдер.",
+    relatedIds: []
   };
 }
 
@@ -769,6 +1095,7 @@ function Header({ todayCount, importantCount }: { todayCount: number; importantC
 }
 
 function DesktopSidebar({ activeTab, onChange }: { activeTab: TabId; onChange: (tab: TabId) => void }) {
+  const primaryTabs: TabId[] = ["today", "week", "projects", "settings"];
   return (
     <aside className="sticky top-4 hidden h-[calc(100vh-32px)] md:block">
       <GlassPanel className="flex h-full flex-col gap-2 p-3">
@@ -776,7 +1103,9 @@ function DesktopSidebar({ activeTab, onChange }: { activeTab: TabId; onChange: (
           <div className="text-xl font-black">ЕЖЕДНЕВНИК</div>
           <p className="text-xs text-[var(--muted)]">smart local parser</p>
         </div>
-        {tabs.map((tab) => (
+        {primaryTabs.map((tabId) => {
+          const tab = tabs.find((item) => item.id === tabId)!;
+          return (
           <button
             className={`flex min-h-11 items-center gap-3 rounded-2xl px-3 text-sm font-bold transition ${
               activeTab === tab.id ? "bg-white/70 text-[var(--foreground)] shadow-sm dark:bg-white/10" : "text-[var(--muted)] hover:bg-white/40 dark:hover:bg-white/10"
@@ -788,7 +1117,8 @@ function DesktopSidebar({ activeTab, onChange }: { activeTab: TabId; onChange: (
             <tab.icon size={18} />
             {tab.label}
           </button>
-        ))}
+          );
+        })}
       </GlassPanel>
     </aside>
   );
@@ -882,7 +1212,9 @@ function SmartPreview({
               </button>
             </div>
             <div className="grid gap-2 text-sm text-[var(--muted)]">
-              <span>{item.projectPath?.length ? item.projectPath.join(" -> ") : "без проекта"}</span>
+              <span>{item.area ?? item.projectPath?.[0] ?? "без области"}{item.project || item.projectCandidate ? ` -> ${item.project ?? item.projectCandidate}` : ""}</span>
+              {item.projectCandidate ? <span className="font-bold text-[var(--accent)]">Новый проект: {item.projectCandidate}</span> : null}
+              <span>{ownerLabel(item.assignedTo)}</span>
               <span>{item.dueDate ? formatDateRu(item.dueDate) : scheduleLabel(item.schedule)}</span>
               {item.totalPrice || item.unitPrice ? <span>{item.quantity ? `${item.quantity} × ` : ""}{item.unitPrice ?? item.totalPrice} {item.currency ?? "RUB"}</span> : null}
               {item.url ? <span className="truncate">{item.url}</span> : null}
@@ -901,7 +1233,7 @@ function SmartPreview({
                   <option value="task">Задача</option>
                   <option value="purchase">Покупка</option>
                   <option value="idea">Идея</option>
-                  <option value="inbox">Inbox</option>
+                  <option value="note">Заметка</option>
                 </select>
                 <GlassButton className="px-3 text-xs" onClick={() => onRemember(index)}>
                   Запомнить правило
@@ -924,37 +1256,127 @@ function SmartPreview({
   );
 }
 
+function BudgetPanel({
+  budget,
+  goals,
+  onAddGoal,
+  onDeposit
+}: {
+  budget: ReturnType<typeof calculateBudget>;
+  goals: SavingsGoal[];
+  onAddGoal: (title: string, amount: number) => void;
+  onDeposit: (goalId: string, amount: number) => void;
+}) {
+  const [goalTitle, setGoalTitle] = useState("");
+  const [goalAmount, setGoalAmount] = useState("");
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-3 sm:grid-cols-3">
+        <MetricCard label="Потрачено" value={`${budget.actual.toLocaleString("ru-RU")} ₽`} detail="куплено" icon={<WalletCards size={18} />} />
+        <MetricCard label="Запланировано" value={`${budget.planned.toLocaleString("ru-RU")} ₽`} detail="открытые покупки" icon={<ShoppingCart size={18} />} />
+        <MetricCard label="Накопления" value={`${goals.length}`} detail="целей" icon={<Sparkles size={18} />} />
+      </div>
+      <GlassCard className="grid gap-3 p-4">
+        <h3 className="text-lg font-black">По областям</h3>
+        {budget.byArea.length ? budget.byArea.map((item) => (
+          <div className="flex items-center justify-between gap-3 rounded-2xl bg-white/40 px-3 py-2 dark:bg-white/5" key={item.area}>
+            <span className="font-bold">{item.area}</span>
+            <span>{item.amount.toLocaleString("ru-RU")} ₽</span>
+          </div>
+        )) : <p className="text-sm text-[var(--muted)]">Покупок с суммами пока нет.</p>}
+      </GlassCard>
+      <GlassCard className="grid gap-3 p-4">
+        <h3 className="text-lg font-black">Накопления</h3>
+        <div className="grid gap-2 sm:grid-cols-[1fr_160px_auto]">
+          <input className="glass-input h-11 px-3" placeholder="На что копим" value={goalTitle} onChange={(event) => setGoalTitle(event.target.value)} />
+          <input className="glass-input h-11 px-3" inputMode="decimal" placeholder="Цель" value={goalAmount} onChange={(event) => setGoalAmount(event.target.value)} />
+          <GlassButton className="px-4 font-bold" onClick={() => { onAddGoal(goalTitle, numberOrUndefined(goalAmount) ?? 0); setGoalTitle(""); setGoalAmount(""); }}>
+            Добавить
+          </GlassButton>
+        </div>
+        {goals.map((goal) => {
+          const progress = Math.min(100, Math.round((goal.currentAmount / goal.targetAmount) * 100));
+          return (
+            <div className="rounded-2xl bg-white/40 p-3 dark:bg-white/5" key={goal.id}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="font-black">{goal.title}</div>
+                  <div className="text-sm text-[var(--muted)]">{goal.currentAmount.toLocaleString("ru-RU")} / {goal.targetAmount.toLocaleString("ru-RU")} {goal.currency}</div>
+                </div>
+                <GlassButton className="px-3 text-sm font-bold" onClick={() => onDeposit(goal.id, 10000)}>
+                  +10 000
+                </GlassButton>
+              </div>
+              <div className="mt-3 h-2 rounded-full bg-white/50 dark:bg-white/10">
+                <div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${progress}%` }} />
+              </div>
+            </div>
+          );
+        })}
+      </GlassCard>
+    </div>
+  );
+}
+
 function ProjectBoard({
+  areas,
   entries,
   highlightedId,
   onBack,
+  onBackArea,
   onComplete,
   onDelete,
   onSelect,
+  onSelectArea,
   onUpdate,
   projects,
+  selectedArea,
   selectedProject
 }: {
+  areas: Area[];
   entries: DiaryEntry[];
   highlightedId: string | null;
   onBack: () => void;
+  onBackArea: () => void;
   onComplete: (entry: DiaryEntry) => void;
   onDelete: (id: string) => void;
   onSelect: (name: string) => void;
+  onSelectArea: (name: string) => void;
   onUpdate: (id: string, patch: Partial<DiaryEntry>) => void;
   projects: ProjectNode[];
+  selectedArea: string | null;
   selectedProject: string | null;
 }) {
-  const projectNames = projects.map((project) => project.name);
-  const selectedEntries = selectedProject ? entries.filter((entry) => entry.projectPath.includes(selectedProject)) : [];
+  const selectedEntries = selectedProject ? entries.filter((entry) => entry.project === selectedProject || entry.projectPath.includes(selectedProject)) : [];
+
+  if (!selectedArea && !selectedProject) {
+    const areaNames = new Set([...areas.map((area) => area.name), ...entries.map((entry) => entry.area).filter(Boolean) as string[]]);
+    return (
+      <div className="grid gap-3 sm:grid-cols-2">
+        {[...areaNames].map((name) => {
+          const linked = entries.filter((entry) => entry.area === name);
+          return (
+            <button className="rounded-2xl text-left focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" key={name} onClick={() => onSelectArea(name)} type="button">
+              <GlassCard className="h-full p-4">
+                <div className="text-xl font-black">{name}</div>
+                <div className="mt-3 flex flex-wrap gap-2"><GlassBadge>{linked.filter((entry) => entry.status !== "done").length} активных</GlassBadge></div>
+              </GlassCard>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
 
   if (selectedProject) {
+    const purchases = selectedEntries.filter((entry) => entry.kind === "purchase");
+    const budget = calculateBudget(selectedEntries);
     return (
       <div className="grid gap-3">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h3 className="text-xl font-black">{selectedProject}</h3>
-            <p className="text-sm text-[var(--muted)]">{selectedEntries.length} связанных записей</p>
+            <p className="text-sm text-[var(--muted)]">{selectedEntries.length} записей · {purchases.length} покупок · {budget.planned.toLocaleString("ru-RU")} ₽ план</p>
           </div>
           <GlassButton className="px-4 font-bold" onClick={onBack}>
             Все проекты
@@ -980,15 +1402,20 @@ function ProjectBoard({
 
   return (
     <div className="grid gap-3 sm:grid-cols-2">
-      {projectNames.length ? (
-        projectNames.map((name) => {
-          const linked = entries.filter((entry) => entry.projectPath.includes(name));
+      <div className="col-span-full">
+        <GlassButton className="px-4 font-bold" onClick={onBackArea}>Все области</GlassButton>
+      </div>
+      {projects.filter((project) => project.area === selectedArea).length ? (
+        projects.filter((project) => project.area === selectedArea).map((project) => {
+          const name = project.name;
+          const linked = entries.filter((entry) => entry.project === name || entry.projectPath.includes(name));
           const purchases = linked.filter((entry) => entry.kind === "purchase").length;
           const tasks = linked.filter((entry) => entry.kind === "task").length;
           return (
             <button className="rounded-2xl text-left focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" key={name} onClick={() => onSelect(name)} type="button">
               <GlassCard className="h-full p-4">
                 <div className="text-xl font-black">{name}</div>
+                <div className="text-sm text-[var(--muted)]">{project.area}</div>
                 <div className="mt-3 flex flex-wrap gap-2 text-sm text-[var(--muted)]">
                   <GlassBadge>{linked.length} записей</GlassBadge>
                   {tasks ? <GlassBadge>{tasks} задач</GlassBadge> : null}
@@ -1033,6 +1460,7 @@ function EntryRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <GlassBadge className={kindTone[entry.kind]}>{kindLabel[entry.kind]}</GlassBadge>
+            <GlassBadge>{ownerLabel(entry.assignedTo)}</GlassBadge>
             {entry.priority === "high" ? <GlassBadge className="text-[var(--rose)]">важно</GlassBadge> : null}
             {entry.needsReview ? <GlassBadge className="text-[var(--amber)]">уточнить</GlassBadge> : null}
           </div>
@@ -1042,9 +1470,9 @@ function EntryRow({
             onChange={(event) => onUpdate({ title: event.target.value })}
           />
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-[var(--muted)]">
-            <span>{entry.projectPath.length ? entry.projectPath.join(" -> ") : "без проекта"}</span>
+            <span>{entry.area ?? "Личное"}{entry.project ? ` -> ${entry.project}` : entry.projectPath.length ? ` -> ${entry.projectPath.join(" -> ")}` : ""}</span>
             <span>{formatDateRu(entry.dueDate)}</span>
-            {entry.totalPrice || entry.unitPrice ? <span>{entry.totalPrice ?? entry.unitPrice} {entry.currency ?? "RUB"}</span> : null}
+            {entry.purchase?.totalPrice || entry.totalPrice || entry.unitPrice ? <span>{entry.purchase?.totalPrice ?? entry.totalPrice ?? entry.unitPrice} {entry.purchase?.currency ?? entry.currency ?? "RUB"}</span> : null}
             {entry.url ? <a className="font-bold text-[var(--accent)]" href={entry.url} rel="noreferrer" target="_blank">Открыть товар</a> : null}
           </div>
         </div>
@@ -1070,7 +1498,10 @@ function SettingsPanel({
   onClearAll,
   onClearEntries,
   onClearRules,
+  onExport,
+  onImport,
   onNavigate,
+  members,
   settings,
   onChange,
   rulesCount,
@@ -1079,7 +1510,10 @@ function SettingsPanel({
   onClearAll: () => void;
   onClearEntries: () => void;
   onClearRules: () => void;
+  onExport: () => void;
+  onImport: (file: File) => void;
   onNavigate: (tab: TabId) => void;
+  members: Member[];
   settings: AppSettings;
   onChange: (settings: AppSettings) => void;
   rulesCount: number;
@@ -1090,7 +1524,7 @@ function SettingsPanel({
       <GlassCard className="grid gap-2 p-4">
         <h3 className="text-lg font-black">Разделы</h3>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {(["inbox", "tasks", "purchases", "ideas", "projects", "today"] as TabId[]).map((tabId) => {
+          {(["all", "purchases", "budget", "ideas", "inbox", "someday", "projects", "today", "week"] as TabId[]).map((tabId) => {
             const tab = tabs.find((item) => item.id === tabId)!;
             return (
               <GlassButton className="justify-start px-3 text-sm font-bold" key={tabId} onClick={() => onNavigate(tabId)}>
@@ -1102,12 +1536,53 @@ function SettingsPanel({
         </div>
       </GlassCard>
       <GlassCard className="grid gap-3 p-4">
+        <h3 className="text-lg font-black">Семья</h3>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {members.map((member) => (
+            <div className="rounded-2xl bg-white/40 p-3 dark:bg-white/5" key={member.id}>
+              <div className="font-black">{member.avatar} {member.name}</div>
+              <div className="text-sm text-[var(--muted)]">{member.role === "owner" ? "Основной профиль" : "Партнёр"}</div>
+            </div>
+          ))}
+        </div>
+        <label className="grid gap-1">
+          <span className="text-sm font-bold">Default owner for personal tasks</span>
+          <select className="glass-input h-11 px-3" value={settings.defaultPersonalAssignee} onChange={(event) => onChange({ ...settings, defaultPersonalAssignee: event.target.value as AssignedTo })}>
+            <option value="me">Моё</option>
+            <option value="partner">Партнёр</option>
+            <option value="shared">Общее</option>
+          </select>
+        </label>
+        <label className="grid gap-1">
+          <span className="text-sm font-bold">Default owner for home purchases</span>
+          <select className="glass-input h-11 px-3" value={settings.defaultHomePurchaseAssignee} onChange={(event) => onChange({ ...settings, defaultHomePurchaseAssignee: event.target.value as AssignedTo })}>
+            <option value="shared">Общее</option>
+            <option value="me">Моё</option>
+            <option value="partner">Партнёр</option>
+          </select>
+        </label>
+      </GlassCard>
+      <GlassCard className="grid gap-3 p-4">
         <label className="flex items-center justify-between gap-3">
           <span>
             <span className="block font-bold">AI включен</span>
             <span className="text-sm text-[var(--muted)]">Local smart parser работает всегда; AI используется только как fallback.</span>
           </span>
           <input checked={settings.aiEnabled} type="checkbox" onChange={(event) => onChange({ ...settings, aiEnabled: event.target.checked })} />
+        </label>
+        <label className="flex items-center justify-between gap-3">
+          <span>
+            <span className="block font-bold">Ask before creating new project</span>
+            <span className="text-sm text-[var(--muted)]">Новые project candidates показываются в preview перед сохранением.</span>
+          </span>
+          <input checked={settings.askBeforeCreatingProject} type="checkbox" onChange={(event) => onChange({ ...settings, askBeforeCreatingProject: event.target.checked })} />
+        </label>
+        <label className="flex items-center justify-between gap-3">
+          <span>
+            <span className="block font-bold">Learn from corrections</span>
+            <span className="text-sm text-[var(--muted)]">Обучение происходит только после явного подтверждения.</span>
+          </span>
+          <input checked={settings.learnFromCorrections} type="checkbox" onChange={(event) => onChange({ ...settings, learnFromCorrections: event.target.checked })} />
         </label>
         <label className="flex items-center justify-between gap-3">
           <span>
@@ -1153,11 +1628,32 @@ function SettingsPanel({
             Очистить все данные
           </GlassButton>
         </div>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <GlassButton className="justify-center px-3 text-sm font-bold" onClick={onExport}>
+            Экспортировать данные
+          </GlassButton>
+          <label className="glass-button justify-center px-3 text-sm font-bold">
+            Импорт JSON
+            <input className="hidden" type="file" accept="application/json" onChange={(event) => event.target.files?.[0] ? onImport(event.target.files[0]) : undefined} />
+          </label>
+        </div>
       </GlassCard>
       <GlassCard className="grid gap-3 p-4">
         <label className="grid gap-1">
           <span className="text-sm font-bold">Валюта по умолчанию</span>
           <input className="glass-input h-11 px-3" value={settings.defaultCurrency} onChange={(event) => onChange({ ...settings, defaultCurrency: event.target.value })} />
+        </label>
+        <label className="grid gap-1">
+          <span className="text-sm font-bold">Monthly budget optional</span>
+          <input className="glass-input h-11 px-3" inputMode="decimal" value={settings.monthlyBudget ?? ""} onChange={(event) => onChange({ ...settings, monthlyBudget: numberOrUndefined(event.target.value) })} />
+        </label>
+        <label className="grid gap-1">
+          <span className="text-sm font-bold">Appearance</span>
+          <select className="glass-input h-11 px-3" value={settings.appearance} onChange={(event) => onChange({ ...settings, appearance: event.target.value as AppSettings["appearance"] })}>
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
         </label>
         <label className="grid gap-1">
           <span className="text-sm font-bold">Часовой пояс</span>
@@ -1199,7 +1695,7 @@ function PreviewEditSheet({
               <option value="task">Задача</option>
               <option value="purchase">Покупка</option>
               <option value="idea">Идея</option>
-              <option value="inbox">Входящие</option>
+              <option value="note">Заметка</option>
             </select>
           </label>
           <label className="grid gap-1">
@@ -1245,7 +1741,7 @@ function PreviewEditSheet({
   );
 }
 
-function QuickInputSheet({ onClose, onText, onVoice }: { onClose: () => void; onText: () => void; onVoice: () => void }) {
+function QuickInputSheet({ onClose, onManual, onText, onVoice }: { onClose: () => void; onManual: (kind: EntryKind) => void; onText: () => void; onVoice: () => void }) {
   return (
     <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/20 px-4 pb-[calc(16px+env(safe-area-inset-bottom))] backdrop-blur-sm" onClick={onClose}>
       <GlassPanel className="w-full max-w-md p-4" onClick={(event) => event.stopPropagation()}>
@@ -1261,6 +1757,12 @@ function QuickInputSheet({ onClose, onText, onVoice }: { onClose: () => void; on
             <Plus size={22} />
             Написать
           </GlassButton>
+          <div className="grid grid-cols-2 gap-2">
+            <GlassButton className="h-12 px-3 font-bold" onClick={() => onManual("task")}>Задача</GlassButton>
+            <GlassButton className="h-12 px-3 font-bold" onClick={() => onManual("purchase")}>Покупка</GlassButton>
+            <GlassButton className="h-12 px-3 font-bold" onClick={() => onManual("idea")}>Идея</GlassButton>
+            <GlassButton className="h-12 px-3 font-bold" onClick={() => onManual("note")}>Заметка</GlassButton>
+          </div>
           <GlassButton className="h-12 px-5 font-bold" onClick={onClose}>
             Отмена
           </GlassButton>
@@ -1304,13 +1806,14 @@ function summarizeKinds(entries: DiaryEntry[]): string {
       acc[entry.kind] += 1;
       return acc;
     },
-    { task: 0, purchase: 0, idea: 0, inbox: 0 } satisfies Record<EntryKind, number>
+    { task: 0, purchase: 0, idea: 0, note: 0, inbox: 0 } satisfies Record<EntryKind, number>
   );
   return [
     counts.purchase ? pluralKind(counts.purchase, "покупка", "покупки", "покупок") : "",
     counts.task ? pluralKind(counts.task, "задача", "задачи", "задач") : "",
     counts.idea ? pluralKind(counts.idea, "идея", "идеи", "идей") : "",
-    counts.inbox ? `${counts.inbox} в Inbox` : ""
+    counts.note ? pluralKind(counts.note, "заметка", "заметки", "заметок") : "",
+    counts.inbox ? `${counts.inbox} на разбор` : ""
   ]
     .filter(Boolean)
     .join(", ");
@@ -1327,7 +1830,24 @@ function sectionLabel(kind: EntryKind): string {
   if (kind === "task") return "Задачи";
   if (kind === "purchase") return "Покупки";
   if (kind === "idea") return "Идеи";
-  return "Inbox";
+  if (kind === "note") return "Заметки";
+  return "Разобрать";
+}
+
+function ownerLabel(assignedTo?: AssignedTo): string {
+  if (assignedTo === "shared") return "Общее";
+  if (assignedTo === "partner") return "Партнёр";
+  return "Моё";
+}
+
+function matchesOwner(entry: DiaryEntry, filter: "me" | "shared" | "all"): boolean {
+  if (filter === "all") return true;
+  if (filter === "shared") return entry.assignedTo === "shared" || entry.visibility === "shared";
+  return !entry.assignedTo || entry.assignedTo === "me";
+}
+
+function textMatches(value: string, needle: string): boolean {
+  return value.toLowerCase().includes(needle.toLowerCase());
 }
 
 function scheduleLabel(schedule: SchedulePreset): string {

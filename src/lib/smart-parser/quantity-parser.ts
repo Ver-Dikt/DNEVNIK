@@ -1,7 +1,7 @@
 import type { QuantityParseResult } from "@/lib/smart-parser/types";
 
 export function parseQuantity(text: string): QuantityParseResult {
-  const match = text.match(/(?:^|\s)(\d+(?:[.,]\d+)?)\s*(штук(?:и)?|шт|кабел(?:я|ей|ь)?|руч(?:ки|ек|ка)?|петл(?:и|я|ь)?|потенциометр(?:а|ов)?|комплект(?:а|ов)?|метр(?:а|ов)?)(?=\s|$)/i);
+  const match = text.match(/(?:^|\s)(\d+(?:[.,]\d+)?)\s*(штук(?:и)?|шт|банк(?:и|а|у|ок)?|кабел(?:я|ей|ь)?|руч(?:ки|ек|ка)?|петл(?:и|я|ь)?|потенциометр(?:а|ов)?|комплект(?:а|ов)?|метр(?:а|ов)?)(?=\s|$)/i);
   if (match) {
     return {
       quantity: Number(match[1].replace(",", ".")),

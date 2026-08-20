@@ -48,7 +48,7 @@ function buildCandidates(projects: ProjectNode[]): Array<{ path: string[]; alias
   }
 
   return projects.map((project) => ({
-    path: [project.name],
+    path: [project.area, project.name].filter(Boolean) as string[],
     aliases: [project.name, ...(project.aliases ?? []), ...(projectAliases[project.name] ?? [])]
   }));
 }
