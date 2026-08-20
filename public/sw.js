@@ -1,8 +1,8 @@
 const CACHE_NAME = "dnevnik-v1";
-const APP_SHELL = ["/", "/manifest.json", "/icon.svg"];
+const APP_SHELL = ["./", "./manifest.json", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL).catch(() => undefined)));
 });
 
 self.addEventListener("activate", (event) => {
@@ -15,5 +15,5 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
-  event.respondWith(fetch(event.request).catch(() => caches.match(event.request).then((cached) => cached || caches.match("/"))));
+  event.respondWith(fetch(event.request).catch(() => caches.match(event.request).then((cached) => cached || caches.match("./"))));
 });

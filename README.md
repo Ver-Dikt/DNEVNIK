@@ -2,6 +2,10 @@
 
 Персональное PWA-приложение для быстрого сохранения задач, покупок, идей, ссылок, цен и заметок. Главный сценарий: быстро написать или надиктовать текст, получить структурированный preview и сохранить результат.
 
+Живая версия после деплоя GitHub Pages:
+
+https://ver-dikt.github.io/DNEVNIK/
+
 ## Стек
 
 - Next.js App Router
@@ -20,6 +24,16 @@ npm run dev
 ```
 
 Открой `http://localhost:3000`.
+
+## Публикация на GitHub Pages
+
+Деплой настроен через GitHub Actions: `.github/workflows/deploy-pages.yml`.
+
+После push в `main` workflow запускает проверки, делает static export и публикует `out/` на GitHub Pages. Для Pages build используется:
+
+```bash
+GITHUB_PAGES=true NEXT_PUBLIC_BASE_PATH=/DNEVNIK npm run build
+```
 
 ## Проверки
 

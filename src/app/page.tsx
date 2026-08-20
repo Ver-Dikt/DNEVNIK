@@ -23,6 +23,7 @@ import { createEntryFromParsed } from "@/lib/mock-ai";
 import { confidenceLabel } from "@/lib/smart-parser/confidence";
 import { formatDateRu, isOverdue, isThisWeek, todayIso } from "@/lib/dates";
 import { loadLearnedRules, rememberIntentRule, saveLearnedRules } from "@/lib/smart-parser/learned-rules";
+import { parseSmartInput } from "@/lib/smart-parser";
 import { defaultSettings, loadEntries, loadSettings, saveEntries, saveSettings } from "@/lib/storage";
 import { GlassBadge, GlassButton, GlassCard, GlassInput, GlassPanel, GlassSegmentedControl, GlassTextarea } from "@/components/glass";
 import type { AIParseResult, AIQueryResult, AppSettings, DiaryEntry, EntryKind, ProjectNode, SchedulePreset } from "@/lib/types";
@@ -77,6 +78,8 @@ const kindTone: Record<EntryKind, string> = {
   inbox: "text-zinc-700 dark:text-zinc-200"
 };
 
+const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
 export default function Home() {
   const [entries, setEntries] = useState<DiaryEntry[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
@@ -104,7 +107,7 @@ export default function Home() {
     setSettings(loadSettings());
     setLearnedRules(loadLearnedRules());
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+      navigator.serviceWorker.register(`${appBasePath}/sw.js`, { scope: `${appBasePath || "/"}` }).catch(() => undefined);
     }
     setSpeechSupported(Boolean(window.SpeechRecognition || window.webkitSpeechRecognition));
   }, []);
@@ -162,13 +165,17 @@ export default function Home() {
     setIsParsing(true);
     setPreview(null);
     try {
-      const response = await fetch("/api/ai/parse", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, timezone: settings.timezone, learnedRules, projects })
+      const result = parseSmartInput(text, {
+        timezone: settings.timezone,
+        learnedRules,
+        projects
       });
-      if (!response.ok) throw new Error("parse failed");
-      setPreview((await response.json()) as AIParseResult);
+      setPreview({
+        confidence: result.confidence,
+        needsReview: result.needsReview,
+        rawText: text,
+        items: result.items
+      });
     } catch {
       const now = new Date().toISOString();
       addEntries([
@@ -330,12 +337,7 @@ export default function Home() {
   async function askDiary() {
     const value = query.trim();
     if (!value) return;
-    const response = await fetch("/api/ai/query", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: value, entries })
-    });
-    setAnswer((await response.json()) as AIQueryResult);
+    setAnswer(answerDiaryLocally(value, entries));
   }
 
   function completeEntry(entry: DiaryEntry) {
@@ -498,6 +500,41 @@ export default function Home() {
       <MobileDock activeTab={activeTab} onAdd={() => addManual("task")} onChange={setActiveTab} />
     </main>
   );
+}
+
+function answerDiaryLocally(query: string, entries: DiaryEntry[]): AIQueryResult {
+  const normalized = query.toLowerCase();
+  const active = entries.filter((entry) => entry.status !== "done" && entry.status !== "cancelled");
+  const purchases = active.filter((entry) => entry.kind === "purchase");
+  const repair = active.filter((entry) => entry.projectPath.join(" ").toLowerCase().includes("ремонт"));
+  const today = active.filter((entry) => entry.dueDate === todayIso() || entry.schedule === "today");
+
+  if (normalized.includes("куп")) {
+    const total = purchases.reduce((sum, item) => sum + (item.totalPrice ?? item.unitPrice ?? 0), 0);
+    return {
+      answer: purchases.length ? `Купить: ${purchases.map((item) => item.title).join(", ")}. Примерная сумма: ${total.toLocaleString("ru-RU")} ₽.` : "Открытых покупок пока нет.",
+      relatedIds: purchases.map((item) => item.id)
+    };
+  }
+
+  if (normalized.includes("ремонт")) {
+    return {
+      answer: repair.length ? `По ремонту осталось: ${repair.map((item) => item.title).join(", ")}.` : "По ремонту активных записей не нашлось.",
+      relatedIds: repair.map((item) => item.id)
+    };
+  }
+
+  if (normalized.includes("сегодня")) {
+    return {
+      answer: today.length ? `Сегодня: ${today.map((item) => item.title).join(", ")}.` : "На сегодня ничего не запланировано.",
+      relatedIds: today.map((item) => item.id)
+    };
+  }
+
+  return {
+    answer: active.length ? `Активных записей: ${active.length}. Самое свежее: ${active[0]?.title}.` : "Активных записей пока нет.",
+    relatedIds: active.slice(0, 5).map((item) => item.id)
+  };
 }
 
 function Header({ todayCount, importantCount }: { todayCount: number; importantCount: number }) {

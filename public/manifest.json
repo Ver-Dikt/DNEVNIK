@@ -2,13 +2,13 @@
   "name": "ЕЖЕДНЕВНИК",
   "short_name": "Дневник",
   "description": "Персональный PWA-ежедневник для задач, покупок, идей и inbox.",
-  "start_url": "/",
+  "start_url": "/DNEVNIK/",
   "display": "standalone",
   "background_color": "#f7f3ea",
   "theme_color": "#1f7a64",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "/DNEVNIK/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml"
     }
