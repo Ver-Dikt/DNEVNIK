@@ -1,0 +1,39 @@
+import { intentPhrases, intentToKind } from "@/lib/smart-parser/phrase-rules";
+import type { IntentResult, LearnedRule, SmartIntent } from "@/lib/smart-parser/types";
+import type { EntryKind } from "@/lib/types";
+
+export function detectIntent(text: string, learnedRules: LearnedRule[] = []): IntentResult {
+  for (const rule of learnedRules) {
+    if (rule.intent && text.includes(rule.phrase.toLowerCase())) {
+      return { intent: rule.intent, confidence: 0.98, matchedText: rule.phrase };
+    }
+  }
+
+  let best: IntentResult = { intent: "unknown", confidence: 0.18 };
+
+  for (const [intent, phrases] of Object.entries(intentPhrases) as Array<[SmartIntent, string[]]>) {
+    for (const phrase of phrases) {
+      if (!phrase) continue;
+      const index = text.indexOf(phrase);
+      if (index === -1) continue;
+      const confidence = phrase.length > 10 ? 0.9 : 0.78;
+      if (confidence > best.confidence) {
+        best = { intent, confidence: confidence - Math.min(index * 0.005, 0.12), matchedText: phrase };
+      }
+    }
+  }
+
+  if (best.intent === "unknown" && /(?:https?:\/\/|www\.)/i.test(text)) {
+    best = { intent: "link", confidence: 0.72, matchedText: "url" };
+  }
+
+  if (best.intent === "unknown" && /\b\d+[\s.,]?\d*\s*(?:руб|р|₽|\$|доллар|бакс|евро|nok|крон)/i.test(text)) {
+    best = { intent: "purchase", confidence: 0.72, matchedText: "price context" };
+  }
+
+  return best;
+}
+
+export function intentAsKind(intent: SmartIntent): EntryKind {
+  return intentToKind[intent] ?? "inbox";
+}
