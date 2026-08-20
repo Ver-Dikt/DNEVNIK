@@ -14,8 +14,9 @@ import type { ParserContext, SmartParsedItem, SmartParseResult } from "@/lib/sma
 
 export function parseSmartInput(input: string, context: ParserContext): SmartParseResult {
   const normalized = normalizeInput(input);
-  const segments = splitIntoSegments(normalized.normalized);
-  const items = segments.map((segment) => parseSegment(segment, normalized.original, context));
+  const phraseProject = matchProject(normalized.normalized, context.projects, context.learnedRules);
+  const segments = splitSemantically(normalized.normalized, phraseProject.projectPath.at(-1) ?? phraseProject.matchedText);
+  const items = segments.map((segment) => parseSegment(segment, normalized.original, context, phraseProject.projectPath));
   const confidence = combineConfidence(items.map((item) => item.confidence));
 
   return {
@@ -27,11 +28,12 @@ export function parseSmartInput(input: string, context: ParserContext): SmartPar
   };
 }
 
-function parseSegment(segment: string, originalInput: string, context: ParserContext): SmartParsedItem {
+function parseSegment(segment: string, originalInput: string, context: ParserContext, inheritedProjectPath: string[] = []): SmartParsedItem {
   const intent = detectIntent(segment, context.learnedRules);
   const kind = intentAsKind(intent.intent);
   const date = parseDate(segment, context.now);
   const project = matchProject(segment, context.projects, context.learnedRules);
+  const projectPath = project.projectPath.length ? project.projectPath : inheritedProjectPath;
   const priority = parsePriority(segment);
   const status = parseStatus(segment, kind);
   const quantity = parseQuantity(segment);
@@ -53,7 +55,7 @@ function parseSegment(segment: string, originalInput: string, context: ParserCon
     kind,
     title: cleanTitle(segment),
     description: segment,
-    projectPath: project.projectPath,
+    projectPath,
     status: status.status,
     priority: priority.priority,
     schedule: date.schedule,
@@ -76,4 +78,75 @@ function parseSegment(segment: string, originalInput: string, context: ParserCon
       quantity: quantity.confidence
     }
   };
+}
+
+function splitSemantically(text: string, projectHint?: string): string[] {
+  const prepared = propagatePronoun(text, projectHint ?? inferObjectContext(text));
+
+  const ideaSplit = prepared.match(/^(.+?)\s+и\s+идея\s+(.+)$/i);
+  if (ideaSplit) return [ideaSplit[1].trim(), `идея ${ideaSplit[2].trim()}`];
+
+  const projectList = prepared.match(/^для\s+(.+?)\s+нужн(?:ы|а|о)\s+(.+)$/i);
+  if (projectList) {
+    const context = projectList[1].trim();
+    const items = splitList(projectList[2]);
+    if (items.length > 1) return items.map((item) => `нужны ${item} для ${context}`);
+  }
+
+  const repeatedNeeded = prepared.match(/^нужн(?:ы|а|о)\s+(.+)$/i);
+  if (repeatedNeeded) {
+    const parts = splitRepeatedObjects(repeatedNeeded[1]);
+    if (parts.length > 1) return parts.map((part) => `нужна ${part}`);
+  }
+
+  const buyList = prepared.match(/^(?:надо\s+)?купить\s+(.+)$/i);
+  if (buyList && !/\b(идея|потом\s+надо|надо\s+будет|проверить|написать|покрасить)\b/i.test(buyList[1])) {
+    const parts = splitListWithSharedTail(buyList[1]);
+    if (parts.length > 1) return parts.map((part) => `купить ${part}`);
+  }
+
+  return splitIntoSegments(prepared).flatMap((segment) => {
+    if (/^идея\b/i.test(segment)) return segment;
+    const actionSplit = segment.split(/\s*,?\s+потом\s+(?=(?:надо\s+(?:будет\s+)?)?(?:купить|сделать|проверить|покрасить|написать|добавить|заказать))/i);
+    if (actionSplit.length > 1) {
+      const [first, ...rest] = actionSplit;
+      return [first, ...rest.map((part) => (/^(надо|купить|сделать|проверить|покрасить|написать|добавить|заказать)\b/i.test(part) ? part : `надо ${part}`))];
+    }
+    return segment;
+  });
+}
+
+function splitList(text: string): string[] {
+  return text
+    .replace(/\s+и\s+/gi, ", ")
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 1);
+}
+
+function splitRepeatedObjects(text: string): string[] {
+  const parts = text
+    .split(/\s+и\s+(?=(?:банк[аи]?|банку|ручк[аи]|петл[иья]|краск[аи]|кабель|потенциометр))/i)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts.length > 1 ? parts : [text.trim()];
+}
+
+function splitListWithSharedTail(text: string): string[] {
+  const tail = text.match(/\s+для\s+(.+)$/i)?.[0] ?? "";
+  const withoutTail = tail ? text.slice(0, -tail.length).trim() : text.trim();
+  const parts = splitList(withoutTail);
+  if (parts.length <= 1) return [text.trim()];
+  return parts.map((part) => `${part}${tail}`);
+}
+
+function propagatePronoun(text: string, projectHint?: string): string {
+  if (!projectHint) return text;
+  return text.replace(/(^|\s)(его|её|ее)(?=\s|$)/gi, `$1${projectHint}`);
+}
+
+function inferObjectContext(text: string): string | undefined {
+  const match = text.match(/\bдля\s+(?:самого\s+)?([а-яa-z0-9-]{4,})/i);
+  if (!match) return undefined;
+  return match[1].replace(/(а|я|у|ю|ом|ем|е|и)$/i, "");
 }

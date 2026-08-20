@@ -20,11 +20,10 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createEntryFromParsed } from "@/lib/mock-ai";
-import { confidenceLabel } from "@/lib/smart-parser/confidence";
 import { formatDateRu, isOverdue, isThisWeek, todayIso } from "@/lib/dates";
-import { loadLearnedRules, rememberIntentRule, saveLearnedRules } from "@/lib/smart-parser/learned-rules";
+import { clearLearnedRules, loadLearnedRules, rememberIntentRule, saveLearnedRules } from "@/lib/smart-parser/learned-rules";
 import { parseSmartInput } from "@/lib/smart-parser";
-import { defaultSettings, loadEntries, loadSettings, saveEntries, saveSettings } from "@/lib/storage";
+import { clearAllDnevnikStorage, clearEntriesStorage, defaultSettings, loadEntries, loadSettings, saveEntries, saveSettings, storageVersion } from "@/lib/storage";
 import { GlassBadge, GlassButton, GlassCard, GlassInput, GlassPanel, GlassSegmentedControl, GlassTextarea } from "@/components/glass";
 import type { AIParseResult, AIQueryResult, AppSettings, DiaryEntry, EntryKind, ProjectNode, SchedulePreset } from "@/lib/types";
 import type { LearnedRule } from "@/lib/smart-parser/types";
@@ -79,6 +78,7 @@ const kindTone: Record<EntryKind, string> = {
 };
 
 const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+type PreviewItem = AIParseResult["items"][number];
 
 export default function Home() {
   const [entries, setEntries] = useState<DiaryEntry[]>([]);
@@ -96,8 +96,11 @@ export default function Home() {
   const [undoEntry, setUndoEntry] = useState<DiaryEntry | null>(null);
   const [listMode, setListMode] = useState<"this" | "next">("this");
   const [isHydrated, setIsHydrated] = useState(false);
-  const [toast, setToast] = useState<{ title: string; detail?: string } | null>(null);
+  const [toast, setToast] = useState<{ title: string; detail?: string; actionLabel?: string; onAction?: () => void } | null>(null);
   const [quickSheetOpen, setQuickSheetOpen] = useState(false);
+  const [editingPreviewIndex, setEditingPreviewIndex] = useState<number | null>(null);
+  const [highlightEntryId, setHighlightEntryId] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const keepListeningRef = useRef(false);
   const voiceBaseTextRef = useRef("");
@@ -156,7 +159,7 @@ export default function Home() {
       return base.filter(
         (entry) =>
           entry.status !== "done" &&
-          (entry.dueDate === todayIso() || entry.schedule === "today" || isOverdue(entry.dueDate) || entry.priority === "high")
+          (entry.dueDate === todayIso() || entry.schedule === "today" || isOverdue(entry.dueDate))
       );
     }
     if (activeTab === "week") {
@@ -370,14 +373,53 @@ export default function Home() {
     addEntries(saved);
     setPreview(null);
     setQuickText("");
-    setVoiceMessage(`Сохранено: ${saved.length} ${pluralRecords(saved.length)}.`);
+    setVoiceMessage("Готово. Можно продолжать следующую диктовку.");
     showSaveToast(saved);
   }
 
+  function savePreviewItem(index: number) {
+    if (!preview?.items[index]) return;
+    const saved = createEntryFromParsed(preview.items[index]);
+    addEntries([saved]);
+    setPreview((current) => {
+      if (!current) return null;
+      const nextItems = current.items.filter((_, itemIndex) => itemIndex !== index);
+      return nextItems.length ? { ...current, items: nextItems } : null;
+    });
+    if (preview.items.length === 1) setQuickText("");
+    setHighlightEntryId(saved.id);
+    setVoiceMessage("Готово. Можно продолжать следующую диктовку.");
+    setToastForSaved([saved]);
+  }
+
+  function removePreviewItem(index: number) {
+    setPreview((current) => {
+      if (!current) return null;
+      const nextItems = current.items.filter((_, itemIndex) => itemIndex !== index);
+      return nextItems.length ? { ...current, items: nextItems } : null;
+    });
+  }
+
+  function saveRawPreviewToInbox() {
+    if (!preview?.rawText) return;
+    saveInboxFallback(preview.rawText, "Исходный текст сохранён в Inbox.");
+  }
+
   function showSaveToast(saved: DiaryEntry[]) {
+    setToastForSaved(saved);
+  }
+
+  function setToastForSaved(saved: DiaryEntry[]) {
+    const firstKind = saved[0]?.kind ?? "inbox";
+    const targetTab = firstKind === "purchase" ? "purchases" : firstKind === "task" ? "tasks" : firstKind === "idea" ? "ideas" : "inbox";
     setToast({
-      title: `Сохранено: ${saved.length} ${pluralRecords(saved.length)}`,
-      detail: summarizeKinds(saved)
+      title: saved.length === 1 ? `✓ Сохранено в ${sectionLabel(firstKind)}` : `✓ Сохранено: ${summarizeKinds(saved)}`,
+      detail: saved.length === 1 ? saved[0]?.title : undefined,
+      actionLabel: "Открыть",
+      onAction: () => {
+        selectTab(targetTab);
+        setHighlightEntryId(saved[0]?.id ?? null);
+      }
     });
   }
 
@@ -407,6 +449,14 @@ export default function Home() {
     saveLearnedRules(next);
   }
 
+  function updatePreviewItem(index: number, patch: Partial<PreviewItem>) {
+    if (!preview) return;
+    setPreview({
+      ...preview,
+      items: preview.items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item))
+    });
+  }
+
   async function askDiary() {
     const value = query.trim();
     if (!value) return;
@@ -432,8 +482,35 @@ export default function Home() {
     saveSettings(next);
   }
 
+  function clearAllEntries() {
+    if (!window.confirm("Очистить все записи? Это удалит задачи, покупки, идеи и Inbox на этом устройстве.")) return;
+    setEntries([]);
+    setPreview(null);
+    clearEntriesStorage();
+    setToast({ title: "Все записи очищены", detail: "Можно начинать с чистой базы." });
+  }
+
+  function clearRules() {
+    if (!window.confirm("Очистить learned rules? Парсер забудет сохранённые правила классификации.")) return;
+    setLearnedRules([]);
+    clearLearnedRules();
+    setToast({ title: "Правила очищены" });
+  }
+
+  function clearEverything() {
+    if (!window.confirm("Очистить все данные ежедневника на этом устройстве?")) return;
+    setEntries([]);
+    setLearnedRules([]);
+    setPreview(null);
+    setAnswer(null);
+    setQuickText("");
+    clearAllDnevnikStorage({ learnedRules: true });
+    setToast({ title: "Все данные очищены", detail: "Старая тестовая база больше не подмешивается." });
+  }
+
   function selectTab(tab: TabId) {
     setActiveTab(tab);
+    if (tab !== "projects") setSelectedProject(null);
     window.setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 0);
   }
 
@@ -538,7 +615,20 @@ export default function Home() {
           {answer ? <p className="px-2 pt-3 text-sm leading-6">{answer.answer}</p> : null}
         </GlassPanel>
 
-        {preview ? <SmartPreview onKindChange={updatePreviewKind} onRemember={rememberRule} onSave={savePreview} preview={preview} refNode={previewRef} /> : null}
+        {preview ? (
+          <SmartPreview
+            advanced={settings.advancedMode}
+            onEdit={(index) => setEditingPreviewIndex(index)}
+            onKindChange={updatePreviewKind}
+            onRawSave={saveRawPreviewToInbox}
+            onRemember={rememberRule}
+            onRemove={removePreviewItem}
+            onSave={savePreview}
+            onSaveItem={savePreviewItem}
+            preview={preview}
+            refNode={previewRef}
+          />
+        ) : null}
 
         <GlassPanel className="p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -559,7 +649,28 @@ export default function Home() {
           </div>
 
           {activeTab === "settings" ? (
-            <SettingsPanel onNavigate={selectTab} settings={settings} onChange={updateSettings} rulesCount={learnedRules.length} />
+            <SettingsPanel
+              onClearAll={clearEverything}
+              onClearEntries={clearAllEntries}
+              onClearRules={clearRules}
+              onNavigate={selectTab}
+              settings={settings}
+              onChange={updateSettings}
+              rulesCount={learnedRules.length}
+              storageVersionLabel={isHydrated ? storageVersion() : "2"}
+            />
+          ) : activeTab === "projects" ? (
+            <ProjectBoard
+              entries={entries}
+              highlightedId={highlightEntryId}
+              onBack={() => setSelectedProject(null)}
+              onComplete={completeEntry}
+              onDelete={deleteEntry}
+              onSelect={setSelectedProject}
+              onUpdate={updateEntry}
+              projects={projects}
+              selectedProject={selectedProject}
+            />
           ) : (
             <div className="grid gap-3">
               {undoEntry ? (
@@ -578,6 +689,7 @@ export default function Home() {
                 visibleEntries.map((entry) => (
                   <EntryRow
                     entry={entry}
+                    highlighted={entry.id === highlightEntryId}
                     key={entry.id}
                     onComplete={() => completeEntry(entry)}
                     onDelete={() => deleteEntry(entry.id)}
@@ -594,7 +706,14 @@ export default function Home() {
 
       <MobileDock activeTab={activeTab} onAdd={openQuickSheet} onChange={selectTab} />
       {quickSheetOpen ? <QuickInputSheet onClose={() => setQuickSheetOpen(false)} onText={focusTextInput} onVoice={startVoiceFromSheet} /> : null}
-      {toast ? <Toast detail={toast.detail} title={toast.title} /> : null}
+      {editingPreviewIndex !== null && preview?.items[editingPreviewIndex] ? (
+        <PreviewEditSheet
+          item={preview.items[editingPreviewIndex]}
+          onChange={(patch) => updatePreviewItem(editingPreviewIndex, patch)}
+          onClose={() => setEditingPreviewIndex(null)}
+        />
+      ) : null}
+      {toast ? <Toast actionLabel={toast.actionLabel} detail={toast.detail} onAction={toast.onAction} title={toast.title} /> : null}
     </main>
   );
 }
@@ -683,7 +802,7 @@ function MobileDock({ activeTab, onAdd, onChange }: { activeTab: TabId; onAdd: (
         const tab = tabs.find((item) => item.id === id)!;
         return <DockButton active={activeTab === id} icon={<tab.icon size={19} />} key={id} label={tab.label} onClick={() => onChange(id)} />;
       })}
-      <button className="grid h-14 w-14 min-w-14 place-items-center rounded-full bg-[var(--foreground)] text-[var(--background)] shadow-xl" onClick={onAdd} type="button" aria-label="Быстрый ввод">
+      <button className="grid h-14 w-14 min-w-14 place-items-center rounded-full bg-[var(--foreground)] text-[var(--background)] shadow-xl" onClick={onAdd} type="button" aria-label="Открыть быстрый ввод">
         <Plus size={24} />
       </button>
       {mobileTabs.slice(2).map((id) => {
@@ -717,15 +836,25 @@ function MetricCard({ detail, icon, label, value }: { detail: string; icon: Reac
 }
 
 function SmartPreview({
+  advanced,
+  onEdit,
   onKindChange,
+  onRawSave,
   onRemember,
+  onRemove,
   onSave,
+  onSaveItem,
   preview,
   refNode
 }: {
+  advanced: boolean;
+  onEdit: (index: number) => void;
   onKindChange: (index: number, kind: EntryKind) => void;
+  onRawSave: () => void;
   onRemember: (index: number) => void;
+  onRemove: (index: number) => void;
   onSave: () => void;
+  onSaveItem: (index: number) => void;
   preview: AIParseResult;
   refNode: React.RefObject<HTMLElement | null>;
 }) {
@@ -733,10 +862,10 @@ function SmartPreview({
     <GlassPanel className="p-4" ref={refNode}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-black">Готово — найдено {preview.items.length} {pluralRecords(preview.items.length)}</h2>
-          <p className="text-sm text-[var(--muted)]">Я понял так. Проверь карточки и сохрани всё.</p>
+          <h2 className="text-2xl font-black">Я понял так:</h2>
+          <p className="text-sm text-[var(--muted)]">{preview.items.length} {pluralRecords(preview.items.length)}. Сохрани подходящие карточки или поправь их перед сохранением.</p>
         </div>
-        <GlassButton className="px-5 font-bold text-white [background:linear-gradient(135deg,#176bff,#7b61ff)]" onClick={onSave}>
+        <GlassButton className="hidden px-5 font-bold text-white [background:linear-gradient(135deg,#176bff,#7b61ff)] sm:inline-flex" onClick={onSave}>
           Сохранить всё
         </GlassButton>
       </div>
@@ -744,54 +873,154 @@ function SmartPreview({
         {preview.items.map((item, index) => (
           <GlassCard className="p-4" key={`${item.title}-${index}`}>
             <div className="mb-3 flex items-start justify-between gap-2">
-              <div>
+              <div className="min-w-0">
                 <GlassBadge className={kindTone[item.kind]}>{kindLabel[item.kind]}</GlassBadge>
                 <h3 className="mt-3 text-lg font-black">{item.title}</h3>
               </div>
-              <select className="glass-input h-10 rounded-full px-3 text-sm" value={item.kind} onChange={(event) => onKindChange(index, event.target.value as EntryKind)}>
-                <option value="task">Задача</option>
-                <option value="purchase">Покупка</option>
-                <option value="idea">Идея</option>
-                <option value="inbox">Inbox</option>
-              </select>
+              <button className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/60 text-lg font-black text-[var(--muted)] dark:bg-white/10" onClick={() => onRemove(index)} type="button" aria-label="Удалить из результата">
+                ×
+              </button>
             </div>
             <div className="grid gap-2 text-sm text-[var(--muted)]">
               <span>{item.projectPath?.length ? item.projectPath.join(" -> ") : "без проекта"}</span>
-              <span>{item.dueDate ? formatDateRu(item.dueDate) : item.schedule}</span>
+              <span>{item.dueDate ? formatDateRu(item.dueDate) : scheduleLabel(item.schedule)}</span>
               {item.totalPrice || item.unitPrice ? <span>{item.quantity ? `${item.quantity} × ` : ""}{item.unitPrice ?? item.totalPrice} {item.currency ?? "RUB"}</span> : null}
-              {(item.confidence ?? preview.confidence) < 0.75 || item.needsReview ? (
-                <span className="font-bold text-[var(--amber)]">Проверь: уверенность {confidenceLabel(item.confidence ?? preview.confidence).toLowerCase()}</span>
-              ) : null}
+              {item.url ? <span className="truncate">{item.url}</span> : null}
             </div>
-            <div className="mt-3 flex gap-2">
-              <GlassButton className="px-3 text-sm" onClick={() => onRemember(index)}>
-                Запомнить правило
+            <div className="mt-4 grid grid-cols-[1fr_1fr] gap-2">
+              <GlassButton className="h-11 justify-center px-3 text-sm font-black text-white [background:linear-gradient(135deg,#176bff,#7b61ff)]" onClick={() => onSaveItem(index)}>
+                Сохранить
               </GlassButton>
-              <GlassButton className="px-3 text-sm" onClick={() => onKindChange(index, "inbox")}>
-                Исправить позже
+              <GlassButton className="h-11 justify-center px-3 text-sm font-black" onClick={() => onEdit(index)}>
+                Изменить
               </GlassButton>
             </div>
+            {advanced ? (
+              <div className="mt-3 flex flex-wrap gap-2 border-t border-white/30 pt-3 text-xs dark:border-white/10">
+                <select className="glass-input h-9 rounded-full px-3 text-xs" value={item.kind} onChange={(event) => onKindChange(index, event.target.value as EntryKind)}>
+                  <option value="task">Задача</option>
+                  <option value="purchase">Покупка</option>
+                  <option value="idea">Идея</option>
+                  <option value="inbox">Inbox</option>
+                </select>
+                <GlassButton className="px-3 text-xs" onClick={() => onRemember(index)}>
+                  Запомнить правило
+                </GlassButton>
+                <span className="self-center text-[var(--muted)]">{item.parsedBy} · {Math.round((item.confidence ?? preview.confidence) * 100)}%</span>
+              </div>
+            ) : null}
           </GlassCard>
         ))}
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <GlassButton className="px-5 font-bold text-white [background:linear-gradient(135deg,#176bff,#7b61ff)]" onClick={onSave}>
+          Сохранить всё
+        </GlassButton>
+        <GlassButton className="px-5 font-bold" onClick={onRawSave}>
+          Сохранить исходный текст в Inbox
+        </GlassButton>
       </div>
     </GlassPanel>
   );
 }
 
+function ProjectBoard({
+  entries,
+  highlightedId,
+  onBack,
+  onComplete,
+  onDelete,
+  onSelect,
+  onUpdate,
+  projects,
+  selectedProject
+}: {
+  entries: DiaryEntry[];
+  highlightedId: string | null;
+  onBack: () => void;
+  onComplete: (entry: DiaryEntry) => void;
+  onDelete: (id: string) => void;
+  onSelect: (name: string) => void;
+  onUpdate: (id: string, patch: Partial<DiaryEntry>) => void;
+  projects: ProjectNode[];
+  selectedProject: string | null;
+}) {
+  const projectNames = projects.map((project) => project.name);
+  const selectedEntries = selectedProject ? entries.filter((entry) => entry.projectPath.includes(selectedProject)) : [];
+
+  if (selectedProject) {
+    return (
+      <div className="grid gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="text-xl font-black">{selectedProject}</h3>
+            <p className="text-sm text-[var(--muted)]">{selectedEntries.length} связанных записей</p>
+          </div>
+          <GlassButton className="px-4 font-bold" onClick={onBack}>
+            Все проекты
+          </GlassButton>
+        </div>
+        {selectedEntries.length ? (
+          selectedEntries.map((entry) => (
+            <EntryRow
+              entry={entry}
+              highlighted={entry.id === highlightedId}
+              key={entry.id}
+              onComplete={() => onComplete(entry)}
+              onDelete={() => onDelete(entry.id)}
+              onUpdate={(patch) => onUpdate(entry.id, patch)}
+            />
+          ))
+        ) : (
+          <div className="py-10 text-center text-sm text-[var(--muted)]">В этом проекте пока нет записей.</div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {projectNames.length ? (
+        projectNames.map((name) => {
+          const linked = entries.filter((entry) => entry.projectPath.includes(name));
+          const purchases = linked.filter((entry) => entry.kind === "purchase").length;
+          const tasks = linked.filter((entry) => entry.kind === "task").length;
+          return (
+            <button className="rounded-2xl text-left focus:outline-none focus:ring-2 focus:ring-[var(--accent)]" key={name} onClick={() => onSelect(name)} type="button">
+              <GlassCard className="h-full p-4">
+                <div className="text-xl font-black">{name}</div>
+                <div className="mt-3 flex flex-wrap gap-2 text-sm text-[var(--muted)]">
+                  <GlassBadge>{linked.length} записей</GlassBadge>
+                  {tasks ? <GlassBadge>{tasks} задач</GlassBadge> : null}
+                  {purchases ? <GlassBadge>{purchases} покупок</GlassBadge> : null}
+                </div>
+              </GlassCard>
+            </button>
+          );
+        })
+      ) : (
+        <div className="col-span-full py-10 text-center text-sm text-[var(--muted)]">Проекты появятся, когда запись будет привязана к проекту.</div>
+      )}
+    </div>
+  );
+}
+
 function EntryRow({
   entry,
+  highlighted,
   onComplete,
   onDelete,
   onUpdate
 }: {
   entry: DiaryEntry;
+  highlighted?: boolean;
   onComplete: () => void;
   onDelete: () => void;
   onUpdate: (patch: Partial<DiaryEntry>) => void;
 }) {
   const done = entry.status === "done";
   return (
-    <GlassCard className="p-3">
+    <GlassCard className={`p-3 transition ${highlighted ? "ring-2 ring-[var(--accent)]" : ""}`}>
       <div className="flex gap-3">
         <button
           className="mt-1 grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/65 text-[var(--accent)] shadow-sm dark:bg-white/10"
@@ -838,15 +1067,23 @@ function EntryRow({
 }
 
 function SettingsPanel({
+  onClearAll,
+  onClearEntries,
+  onClearRules,
   onNavigate,
   settings,
   onChange,
-  rulesCount
+  rulesCount,
+  storageVersionLabel
 }: {
+  onClearAll: () => void;
+  onClearEntries: () => void;
+  onClearRules: () => void;
   onNavigate: (tab: TabId) => void;
   settings: AppSettings;
   onChange: (settings: AppSettings) => void;
   rulesCount: number;
+  storageVersionLabel: string;
 }) {
   return (
     <div className="grid gap-4">
@@ -883,6 +1120,13 @@ function SettingsPanel({
             onChange={(event) => onChange({ ...settings, autoSaveAfterParse: event.target.checked })}
           />
         </label>
+        <label className="flex items-center justify-between gap-3">
+          <span>
+            <span className="block font-bold">Advanced / debug</span>
+            <span className="text-sm text-[var(--muted)]">Показывает confidence, parsedBy и кнопку запоминания правила в preview.</span>
+          </span>
+          <input checked={settings.advancedMode} type="checkbox" onChange={(event) => onChange({ ...settings, advancedMode: event.target.checked })} />
+        </label>
         <label className="grid gap-1">
           <span className="text-sm font-bold">Provider</span>
           <select className="glass-input h-11 px-3" value={settings.aiProvider} onChange={(event) => onChange({ ...settings, aiProvider: event.target.value })}>
@@ -892,6 +1136,23 @@ function SettingsPanel({
             <option value="openai-compatible">OpenAI-compatible</option>
           </select>
         </label>
+      </GlassCard>
+      <GlassCard className="grid gap-3 p-4">
+        <div>
+          <h3 className="text-lg font-black">Данные</h3>
+          <p className="text-sm text-[var(--muted)]">Storage version: {storageVersionLabel}. Демо-записи больше не создаются автоматически.</p>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <GlassButton className="justify-center px-3 text-sm font-bold" onClick={onClearEntries}>
+            Очистить все записи
+          </GlassButton>
+          <GlassButton className="justify-center px-3 text-sm font-bold" onClick={onClearRules}>
+            Очистить правила
+          </GlassButton>
+          <GlassButton className="justify-center px-3 text-sm font-bold text-[var(--rose)]" onClick={onClearAll}>
+            Очистить все данные
+          </GlassButton>
+        </div>
       </GlassCard>
       <GlassCard className="grid gap-3 p-4">
         <label className="grid gap-1">
@@ -904,6 +1165,82 @@ function SettingsPanel({
         </label>
         <GlassBadge>{rulesCount} learned rules</GlassBadge>
       </GlassCard>
+    </div>
+  );
+}
+
+function PreviewEditSheet({
+  item,
+  onChange,
+  onClose
+}: {
+  item: PreviewItem;
+  onChange: (patch: Partial<PreviewItem>) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[85] flex items-end justify-center bg-black/25 px-4 pb-[calc(14px+env(safe-area-inset-bottom))] backdrop-blur-sm" onClick={onClose}>
+      <GlassPanel className="max-h-[88vh] w-full max-w-lg overflow-auto p-4" onClick={(event) => event.stopPropagation()}>
+        <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-white/70 dark:bg-white/20" />
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-2xl font-black">Изменить запись</h2>
+          <button className="grid h-10 w-10 place-items-center rounded-full bg-white/60 text-xl font-black dark:bg-white/10" onClick={onClose} type="button" aria-label="Закрыть">
+            ×
+          </button>
+        </div>
+        <div className="grid gap-3">
+          <label className="grid gap-1">
+            <span className="text-sm font-bold">Название</span>
+            <input className="glass-input h-12 px-3" value={item.title} onChange={(event) => onChange({ title: event.target.value })} />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-sm font-bold">Тип</span>
+            <select className="glass-input h-12 px-3" value={item.kind} onChange={(event) => onChange({ kind: event.target.value as EntryKind, status: event.target.value === "purchase" ? "want_to_buy" : "active" })}>
+              <option value="task">Задача</option>
+              <option value="purchase">Покупка</option>
+              <option value="idea">Идея</option>
+              <option value="inbox">Входящие</option>
+            </select>
+          </label>
+          <label className="grid gap-1">
+            <span className="text-sm font-bold">Проект</span>
+            <input className="glass-input h-12 px-3" value={item.projectPath.join(" -> ")} onChange={(event) => onChange({ projectPath: event.target.value.split(">").map((part) => part.replace("-", "").trim()).filter(Boolean) })} placeholder="Дом -> Ремонт -> Гардероб" />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-sm font-bold">Срок</span>
+            <select className="glass-input h-12 px-3" value={item.schedule} onChange={(event) => onChange({ schedule: event.target.value as SchedulePreset })}>
+              <option value="today">Сегодня</option>
+              <option value="tomorrow">Завтра</option>
+              <option value="this_week">Эта неделя</option>
+              <option value="next_week">Следующая неделя</option>
+              <option value="this_month">Этот месяц</option>
+              <option value="someday">Когда-нибудь</option>
+              <option value="none">Без даты</option>
+            </select>
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="grid gap-1">
+              <span className="text-sm font-bold">Количество</span>
+              <input className="glass-input h-12 px-3" inputMode="decimal" value={item.quantity ?? ""} onChange={(event) => onChange({ quantity: numberOrUndefined(event.target.value) })} />
+            </label>
+            <label className="grid gap-1">
+              <span className="text-sm font-bold">Цена</span>
+              <input className="glass-input h-12 px-3" inputMode="decimal" value={item.unitPrice ?? item.totalPrice ?? ""} onChange={(event) => onChange({ unitPrice: numberOrUndefined(event.target.value), totalPrice: numberOrUndefined(event.target.value) })} />
+            </label>
+          </div>
+          <label className="grid gap-1">
+            <span className="text-sm font-bold">Ссылка</span>
+            <input className="glass-input h-12 px-3" value={item.url ?? ""} onChange={(event) => onChange({ url: event.target.value || undefined })} />
+          </label>
+          <label className="grid gap-1">
+            <span className="text-sm font-bold">Комментарий</span>
+            <textarea className="glass-input min-h-24 px-3 py-3" value={item.description ?? ""} onChange={(event) => onChange({ description: event.target.value })} />
+          </label>
+          <GlassButton className="h-12 justify-center px-5 font-black text-white [background:linear-gradient(135deg,#176bff,#7b61ff)]" onClick={onClose}>
+            Готово
+          </GlassButton>
+        </div>
+      </GlassPanel>
     </div>
   );
 }
@@ -933,12 +1270,21 @@ function QuickInputSheet({ onClose, onText, onVoice }: { onClose: () => void; on
   );
 }
 
-function Toast({ detail, title }: { detail?: string; title: string }) {
+function Toast({ actionLabel, detail, onAction, title }: { actionLabel?: string; detail?: string; onAction?: () => void; title: string }) {
   return (
     <div className="fixed left-1/2 top-4 z-[90] w-[min(92vw,420px)] -translate-x-1/2">
       <GlassCard className="p-4">
-        <div className="font-black">{title}</div>
-        {detail ? <div className="mt-1 text-sm text-[var(--muted)]">{detail}</div> : null}
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="font-black">{title}</div>
+            {detail ? <div className="mt-1 text-sm text-[var(--muted)]">{detail}</div> : null}
+          </div>
+          {actionLabel && onAction ? (
+            <button className="shrink-0 rounded-full bg-white/65 px-3 py-2 text-sm font-black dark:bg-white/10" onClick={onAction} type="button">
+              {actionLabel}
+            </button>
+          ) : null}
+        </div>
       </GlassCard>
     </div>
   );
@@ -961,13 +1307,47 @@ function summarizeKinds(entries: DiaryEntry[]): string {
     { task: 0, purchase: 0, idea: 0, inbox: 0 } satisfies Record<EntryKind, number>
   );
   return [
-    counts.task ? `${counts.task} задач` : "",
-    counts.purchase ? `${counts.purchase} покупок` : "",
-    counts.idea ? `${counts.idea} идей` : "",
+    counts.purchase ? pluralKind(counts.purchase, "покупка", "покупки", "покупок") : "",
+    counts.task ? pluralKind(counts.task, "задача", "задачи", "задач") : "",
+    counts.idea ? pluralKind(counts.idea, "идея", "идеи", "идей") : "",
     counts.inbox ? `${counts.inbox} в Inbox` : ""
   ]
     .filter(Boolean)
-    .join(" · ");
+    .join(", ");
+}
+
+function pluralKind(count: number, one: string, few: string, many: string): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  const word = mod10 === 1 && mod100 !== 11 ? one : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? few : many;
+  return `${count} ${word}`;
+}
+
+function sectionLabel(kind: EntryKind): string {
+  if (kind === "task") return "Задачи";
+  if (kind === "purchase") return "Покупки";
+  if (kind === "idea") return "Идеи";
+  return "Inbox";
+}
+
+function scheduleLabel(schedule: SchedulePreset): string {
+  const labels: Record<SchedulePreset, string> = {
+    today: "Сегодня",
+    tomorrow: "Завтра",
+    this_week: "Эта неделя",
+    next_week: "Следующая неделя",
+    this_month: "Этот месяц",
+    someday: "Когда-нибудь",
+    none: "Без даты"
+  };
+  return labels[schedule];
+}
+
+function numberOrUndefined(value: string): number | undefined {
+  const normalized = value.replace(",", ".").trim();
+  if (!normalized) return undefined;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {

@@ -19,6 +19,10 @@ export function saveLearnedRules(rules: LearnedRule[]): void {
   localStorage.setItem(learnedRulesKey, JSON.stringify(rules));
 }
 
+export function clearLearnedRules(): void {
+  localStorage.setItem(learnedRulesKey, JSON.stringify([]));
+}
+
 export function rememberIntentRule(phrase: string, intent: LearnedRule["intent"]): LearnedRule {
   return {
     id: crypto.randomUUID(),

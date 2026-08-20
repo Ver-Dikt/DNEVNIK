@@ -5,17 +5,22 @@ import type { AppSettings, DiaryEntry, ProjectNode } from "@/lib/types";
 const entriesKey = "dnevnik.entries";
 const projectsKey = "dnevnik.projects";
 const settingsKey = "dnevnik.settings";
+const storageVersionKey = "dnevnik.storageVersion";
+const currentStorageVersion = "2";
+const seedIds = new Set(["seed-task", "seed-purchase", "seed-idea"]);
 
 export const defaultSettings: AppSettings = {
   aiEnabled: false,
   aiProvider: "mock",
   defaultCurrency: "RUB",
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-  autoSaveAfterParse: false
+  autoSaveAfterParse: false,
+  advancedMode: false
 };
 
 export function loadEntries(): DiaryEntry[] {
-  return readJson<DiaryEntry[]>(entriesKey, seedEntries());
+  migrateStorage();
+  return readJson<DiaryEntry[]>(entriesKey, []);
 }
 
 export function saveEntries(entries: DiaryEntry[]): void {
@@ -38,6 +43,23 @@ export function saveSettings(settings: AppSettings): void {
   localStorage.setItem(settingsKey, JSON.stringify(settings));
 }
 
+export function clearEntriesStorage(): void {
+  localStorage.setItem(entriesKey, JSON.stringify([]));
+  localStorage.setItem(storageVersionKey, currentStorageVersion);
+}
+
+export function clearAllDnevnikStorage(options: { learnedRules?: boolean } = {}): void {
+  localStorage.setItem(entriesKey, JSON.stringify([]));
+  localStorage.setItem(projectsKey, JSON.stringify([]));
+  localStorage.setItem(storageVersionKey, currentStorageVersion);
+  if (options.learnedRules) localStorage.setItem("dnevnik.learnedRules", JSON.stringify([]));
+}
+
+export function storageVersion(): string {
+  if (typeof window === "undefined") return currentStorageVersion;
+  return localStorage.getItem(storageVersionKey) ?? "1";
+}
+
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   const raw = localStorage.getItem(key);
@@ -49,46 +71,13 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
-function seedEntries(): DiaryEntry[] {
-  const now = new Date().toISOString();
-  return [
-    {
-      id: "seed-task",
-      kind: "task",
-      title: "Проверить петли для гардероба",
-      projectPath: ["Дом", "Ремонт", "Гардероб"],
-      status: "active",
-      priority: "normal",
-      schedule: "today",
-      dueDate: now.slice(0, 10),
-      createdAt: now,
-      updatedAt: now
-    },
-    {
-      id: "seed-purchase",
-      kind: "purchase",
-      title: "Ручки для шкафа",
-      projectPath: ["Дом", "Ремонт", "Гардероб"],
-      status: "want_to_buy",
-      priority: "normal",
-      schedule: "this_week",
-      quantity: 12,
-      unitPrice: 490,
-      totalPrice: 5880,
-      currency: "RUB",
-      createdAt: now,
-      updatedAt: now
-    },
-    {
-      id: "seed-idea",
-      kind: "idea",
-      title: "Сделать подсветку внутри шкафа",
-      projectPath: ["Дом", "Ремонт", "Гардероб"],
-      status: "active",
-      priority: "low",
-      schedule: "none",
-      createdAt: now,
-      updatedAt: now
-    }
-  ];
+function migrateStorage(): void {
+  if (typeof window === "undefined") return;
+  const version = localStorage.getItem(storageVersionKey);
+  if (version === currentStorageVersion) return;
+
+  const entries = readJson<DiaryEntry[]>(entriesKey, []);
+  const migrated = entries.filter((entry) => !seedIds.has(entry.id));
+  localStorage.setItem(entriesKey, JSON.stringify(migrated));
+  localStorage.setItem(storageVersionKey, currentStorageVersion);
 }

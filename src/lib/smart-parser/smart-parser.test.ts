@@ -79,4 +79,57 @@ describe("parseSmartInput", () => {
     expect(result.items.length).toBeGreaterThanOrEqual(2);
     expect(result.items.map((item) => item.kind)).toContain("purchase");
   });
+
+  it("splits two paint purchases without inventing locations as tasks", () => {
+    const result = parseSmartInput("Нужна банка краски для стены в коридоре и банка краски для самого гардероба.", ctx);
+    expect(result.items).toHaveLength(2);
+    expect(result.items.every((item) => item.kind === "purchase")).toBe(true);
+    expect(result.items.some((item) => item.title.toLowerCase() === "гардероб")).toBe(false);
+  });
+
+  it("does not create a separate wardrobe task from a purchase object", () => {
+    const result = parseSmartInput("Надо купить ручки и петли для гардероба.", ctx);
+    expect(result.items.some((item) => item.title.toLowerCase() === "гардероб")).toBe(false);
+    expect(result.items.every((item) => item.kind === "purchase")).toBe(true);
+  });
+
+  it("propagates wardrobe context across a purchase list", () => {
+    const result = parseSmartInput("Для гардероба нужны ручки, петли и краска.", ctx);
+    expect(result.items).toHaveLength(3);
+    expect(result.items.every((item) => item.kind === "purchase")).toBe(true);
+    expect(result.items.every((item) => item.projectPath.includes("Гардероб") || item.title.toLowerCase().includes("гардероб"))).toBe(true);
+  });
+
+  it("parses corridor painting as one task", () => {
+    const result = parseSmartInput("Коридор покрасить на следующей неделе.", ctx);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.kind).toBe("task");
+  });
+
+  it("parses needed corridor paint as one purchase", () => {
+    const result = parseSmartInput("Нужна краска для коридора.", ctx);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.kind).toBe("purchase");
+  });
+
+  it("keeps a bare noun in inbox for review", () => {
+    const result = parseSmartInput("Гардероб.", ctx);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.kind).toBe("inbox");
+    expect(result.needsReview).toBe(true);
+  });
+
+  it("splits a paint purchase and later painting task", () => {
+    const result = parseSmartInput("Купить банку краски для гардероба, потом надо будет его покрасить.", ctx);
+    expect(result.items).toHaveLength(2);
+    expect(result.items[0]?.kind).toBe("purchase");
+    expect(result.items[1]?.kind).toBe("task");
+    expect(result.items[1]?.title.toLowerCase()).toContain("гардероб");
+  });
+
+  it("splits purchase and later idea", () => {
+    const result = parseSmartInput("Купить краску и идея потом добавить подсветку.", ctx);
+    expect(result.items).toHaveLength(2);
+    expect(result.items.map((item) => item.kind)).toEqual(["purchase", "idea"]);
+  });
 });

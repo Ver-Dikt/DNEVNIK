@@ -1,4 +1,4 @@
-const CACHE_NAME = "dnevnik-v2-mobile-voice";
+const CACHE_NAME = "dnevnik-v3-real-use";
 const APP_SHELL = ["./", "./manifest.json", "./icon.svg"];
 
 self.addEventListener("install", (event) => {

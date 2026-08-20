@@ -69,6 +69,7 @@ export interface AppSettings {
   defaultCurrency: string;
   timezone: string;
   autoSaveAfterParse: boolean;
+  advancedMode: boolean;
 }
 
 export interface AIParseInput {
