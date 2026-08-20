@@ -1,12 +1,13 @@
+import { forwardRef } from "react";
 import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
 
 export function GlassCard({ className = "", ...props }: HTMLAttributes<HTMLDivElement>) {
   return <div className={`glass-card ${className}`} {...props} />;
 }
 
-export function GlassPanel({ className = "", ...props }: HTMLAttributes<HTMLElement>) {
-  return <section className={`glass-panel ${className}`} {...props} />;
-}
+export const GlassPanel = forwardRef<HTMLElement, HTMLAttributes<HTMLElement>>(function GlassPanel({ className = "", ...props }, ref) {
+  return <section ref={ref} className={`glass-panel ${className}`} {...props} />;
+});
 
 export function GlassButton({ className = "", children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
@@ -20,9 +21,12 @@ export function GlassInput({ className = "", ...props }: InputHTMLAttributes<HTM
   return <input className={`glass-input focus-ring ${className}`} {...props} />;
 }
 
-export function GlassTextarea({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea className={`glass-input focus-ring ${className}`} {...props} />;
-}
+export const GlassTextarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function GlassTextarea(
+  { className = "", ...props },
+  ref
+) {
+  return <textarea ref={ref} className={`glass-input focus-ring ${className}`} {...props} />;
+});
 
 export function GlassBadge({ className = "", children, ...props }: HTMLAttributes<HTMLSpanElement>) {
   return (

@@ -5,6 +5,8 @@ export function normalizeInput(input: string): NormalizedInput {
   let normalized = input
     .toLowerCase()
     .replace(/[ё]/g, "е")
+    .replace(/(^|\s)полторы(?=\s|$)/g, "$11.5")
+    .replace(/(^|\s)полтора(?=\s|$)/g, "$11.5")
     .replace(/[“”«»]/g, '"')
     .replace(/[—–]/g, "-")
     .replace(/\s+/g, " ")
@@ -15,7 +17,7 @@ export function normalizeInput(input: string): NormalizedInput {
   }
 
   for (const [word, value] of Object.entries(numberWords)) {
-    normalized = normalized.replace(new RegExp(`\\b${word}\\b`, "g"), String(value));
+    normalized = normalized.replace(new RegExp(`(^|\\s)${word}(?=\\s|$)`, "g"), `$1${value}`);
   }
 
   normalized = normalized.replace(/\s+/g, " ").trim();

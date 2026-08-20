@@ -30,7 +30,12 @@ describe("parseSmartInput", () => {
     ["Взять адаптер за 500 NOK.", "purchase"],
     ["Доделать README сегодня.", "task"],
     ["Срочно отправить счет.", "task"],
-    ["ну короче надо наверное купить четыре петли где-то по семьсот рублей", "purchase"]
+    ["ну короче надо наверное купить четыре петли где-то по семьсот рублей", "purchase"],
+    ["Завтра купить XLR два штуки по полторы тысячи", "purchase"],
+    ["По ремонту гардероба надо поменять петли и заказать ручки", "task"],
+    ["Идея потом сделать подсветку в шкафу", "idea"],
+    ["На этой неделе проверить микшер, купить четыре потенциометра и написать Андрею", "task"],
+    ["Вот ссылка на петли https://example.com стоят 790 рублей", "purchase"]
   ] as const;
 
   it.each(cases)("detects kind for %s", (text, expected) => {
@@ -60,5 +65,18 @@ describe("parseSmartInput", () => {
   it("matches project aliases", () => {
     const result = parseSmartInput("По шкафу надо поменять петли.", ctx);
     expect(result.items[0]?.projectPath).toEqual(["Дом", "Ремонт", "Гардероб"]);
+  });
+
+  it("understands spoken half-thousand price", () => {
+    const result = parseSmartInput("Завтра купить XLR два штуки по полторы тысячи", ctx);
+    expect(result.items[0]?.quantity).toBe(2);
+    expect(result.items[0]?.unitPrice).toBe(1500);
+    expect(result.items[0]?.schedule).toBe("tomorrow");
+  });
+
+  it("keeps multi-action weekly phrase useful", () => {
+    const result = parseSmartInput("На этой неделе проверить микшер, купить четыре потенциометра и написать Андрею", ctx);
+    expect(result.items.length).toBeGreaterThanOrEqual(2);
+    expect(result.items.map((item) => item.kind)).toContain("purchase");
   });
 });

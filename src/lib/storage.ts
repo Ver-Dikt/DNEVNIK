@@ -10,7 +10,8 @@ export const defaultSettings: AppSettings = {
   aiEnabled: false,
   aiProvider: "mock",
   defaultCurrency: "RUB",
-  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  autoSaveAfterParse: false
 };
 
 export function loadEntries(): DiaryEntry[] {
@@ -30,7 +31,7 @@ export function saveProjects(projects: ProjectNode[]): void {
 }
 
 export function loadSettings(): AppSettings {
-  return readJson<AppSettings>(settingsKey, defaultSettings);
+  return { ...defaultSettings, ...readJson<Partial<AppSettings>>(settingsKey, defaultSettings) };
 }
 
 export function saveSettings(settings: AppSettings): void {

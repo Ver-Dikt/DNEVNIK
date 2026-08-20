@@ -95,10 +95,16 @@ export default function Home() {
   const [voiceMessage, setVoiceMessage] = useState("");
   const [undoEntry, setUndoEntry] = useState<DiaryEntry | null>(null);
   const [listMode, setListMode] = useState<"this" | "next">("this");
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [toast, setToast] = useState<{ title: string; detail?: string } | null>(null);
+  const [quickSheetOpen, setQuickSheetOpen] = useState(false);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const keepListeningRef = useRef(false);
   const voiceBaseTextRef = useRef("");
   const latestQuickTextRef = useRef("");
+  const parseAfterStopRef = useRef(false);
+  const previewRef = useRef<HTMLElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     // localStorage is only available after hydration; this keeps server render deterministic.
@@ -106,6 +112,7 @@ export default function Home() {
     setEntries(loadEntries());
     setSettings(loadSettings());
     setLearnedRules(loadLearnedRules());
+    setIsHydrated(true);
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register(`${appBasePath}/sw.js`, { scope: `${appBasePath || "/"}` }).catch(() => undefined);
     }
@@ -113,12 +120,18 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (entries.length) saveEntries(entries);
-  }, [entries]);
+    if (isHydrated) saveEntries(entries);
+  }, [entries, isHydrated]);
 
   useEffect(() => {
     latestQuickTextRef.current = quickText;
   }, [quickText]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timeout = window.setTimeout(() => setToast(null), 3600);
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
 
   const projects = useMemo<ProjectNode[]>(() => {
     const names = new Map<string, ProjectNode>();
@@ -159,56 +172,96 @@ export default function Home() {
     return base;
   }, [activeTab, entries, listMode]);
 
-  async function parseQuickText() {
-    const text = quickText.trim();
+  async function parseText(inputText: string, options: { autoSaveEligible?: boolean; source?: "voice" | "button" } = {}) {
+    const text = inputText.trim();
     if (!text) return;
     setIsParsing(true);
     setPreview(null);
+    setVoiceMessage(options.source === "voice" ? "Разбираю запись..." : "Разбираю...");
     try {
       const result = parseSmartInput(text, {
         timezone: settings.timezone,
         learnedRules,
         projects
       });
-      setPreview({
-        confidence: result.confidence,
-        needsReview: result.needsReview,
-        rawText: text,
-        items: result.items
-      });
-    } catch {
-      const now = new Date().toISOString();
-      addEntries([
-        {
-          id: crypto.randomUUID(),
-          kind: "inbox",
-          title: text.slice(0, 86),
-          description: text,
-          projectPath: [],
-          status: "active",
-          priority: "normal",
-          schedule: "none",
-          needsReview: true,
-          sourceText: text,
-          originalInput: text,
-          parsedBy: "manual",
-          confidence: 0.2,
-          createdAt: now,
-          updatedAt: now
+
+        if (!result.items.length) {
+          saveInboxFallback(text, "Не удалось уверенно разобрать запись. Она сохранена в Inbox.");
+          return;
         }
-      ]);
-      setQuickText("");
+
+        const nextPreview: AIParseResult = {
+          confidence: result.confidence,
+          needsReview: result.needsReview,
+          rawText: text,
+          items: result.items
+        };
+
+        const shouldAutoSave =
+          options.autoSaveEligible &&
+          settings.autoSaveAfterParse &&
+          nextPreview.confidence >= 0.8 &&
+          !nextPreview.needsReview &&
+          nextPreview.items.every((item) => (item.confidence ?? nextPreview.confidence) >= 0.8 && !item.needsReview);
+
+        if (shouldAutoSave) {
+          const saved = nextPreview.items.map(createEntryFromParsed);
+          addEntries(saved);
+          setQuickText("");
+          setVoiceMessage(`Готово — сохранено ${saved.length} ${pluralRecords(saved.length)}.`);
+          showSaveToast(saved);
+          return;
+        }
+
+        setPreview(nextPreview);
+        setVoiceMessage(`Готово — найдено ${nextPreview.items.length} ${pluralRecords(nextPreview.items.length)}.`);
+        window.setTimeout(() => previewRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+    } catch {
+      saveInboxFallback(text, "Не удалось разобрать запись. Я сохранил исходный текст в Inbox.");
     } finally {
       setIsParsing(false);
     }
   }
 
+  async function parseQuickText() {
+    const text = quickText.trim();
+    if (!text) return;
+    await parseText(text, { source: "button" });
+  }
+
+  function saveInboxFallback(text: string, message: string) {
+    const now = new Date().toISOString();
+    const entry: DiaryEntry = {
+      id: crypto.randomUUID(),
+      kind: "inbox",
+      title: text.slice(0, 86) || "Неразобранная запись",
+      description: text,
+      projectPath: [],
+      status: "active",
+      priority: "normal",
+      schedule: "none",
+      needsReview: true,
+      sourceText: text,
+      originalInput: text,
+      parsedBy: "manual",
+      confidence: 0.2,
+      createdAt: now,
+      updatedAt: now
+    };
+    addEntries([entry]);
+    setQuickText("");
+    setPreview(null);
+    setVoiceMessage(message);
+    setToast({ title: "Сохранено в Inbox", detail: message });
+  }
+
   function toggleVoiceInput() {
     if (isListening) {
       keepListeningRef.current = false;
+      parseAfterStopRef.current = true;
       recognitionRef.current?.stop();
       setIsListening(false);
-      setVoiceMessage("Остановлено. Можно проверить текст и разобрать.");
+      setVoiceMessage("Запись остановлена. Фиксирую текст...");
       return;
     }
 
@@ -243,9 +296,19 @@ export default function Home() {
         return;
       }
       setIsListening(false);
+      if (parseAfterStopRef.current) {
+        parseAfterStopRef.current = false;
+        const finalText = latestQuickTextRef.current.trim();
+        if (finalText) {
+          void parseText(finalText, { autoSaveEligible: true, source: "voice" });
+        } else {
+          setVoiceMessage("Запись остановлена, но текст не распознан.");
+        }
+      }
     };
     recognition.onerror = (event) => {
       keepListeningRef.current = false;
+      parseAfterStopRef.current = false;
       setIsListening(false);
       recognitionRef.current = null;
       setVoiceMessage(
@@ -303,9 +366,19 @@ export default function Home() {
 
   function savePreview() {
     if (!preview) return;
-    addEntries(preview.items.map(createEntryFromParsed));
+    const saved = preview.items.map(createEntryFromParsed);
+    addEntries(saved);
     setPreview(null);
     setQuickText("");
+    setVoiceMessage(`Сохранено: ${saved.length} ${pluralRecords(saved.length)}.`);
+    showSaveToast(saved);
+  }
+
+  function showSaveToast(saved: DiaryEntry[]) {
+    setToast({
+      title: `Сохранено: ${saved.length} ${pluralRecords(saved.length)}`,
+      detail: summarizeKinds(saved)
+    });
   }
 
   function updatePreviewKind(index: number, kind: EntryKind) {
@@ -359,9 +432,30 @@ export default function Home() {
     saveSettings(next);
   }
 
+  function selectTab(tab: TabId) {
+    setActiveTab(tab);
+    window.setTimeout(() => window.scrollTo({ top: 0, behavior: "smooth" }), 0);
+  }
+
+  function openQuickSheet() {
+    setQuickSheetOpen(true);
+  }
+
+  function focusTextInput() {
+    setQuickSheetOpen(false);
+    window.setTimeout(() => textareaRef.current?.focus(), 120);
+  }
+
+  function startVoiceFromSheet() {
+    setQuickSheetOpen(false);
+    window.setTimeout(() => {
+      if (!isListening) toggleVoiceInput();
+    }, 120);
+  }
+
   return (
     <main className="mx-auto grid min-h-screen w-full max-w-7xl gap-5 px-4 pb-28 pt-4 md:grid-cols-[220px_minmax(0,1fr)] md:px-6 md:pb-8 lg:px-8">
-      <DesktopSidebar activeTab={activeTab} onChange={setActiveTab} />
+      <DesktopSidebar activeTab={activeTab} onChange={selectTab} />
 
       <div className="min-w-0 space-y-5">
         <Header todayCount={todayEntries.length} importantCount={importantEntries.length} />
@@ -374,6 +468,7 @@ export default function Home() {
                 <GlassBadge>{isListening ? "запись идет" : "готово"}</GlassBadge>
               </div>
               <GlassTextarea
+                ref={textareaRef}
                 className="min-h-28 w-full resize-y px-4 py-4 text-[16px] leading-7"
                 placeholder="Наговори или напиши всё подряд: задачи, покупки, идеи, ссылки, цены..."
                 value={quickText}
@@ -443,7 +538,7 @@ export default function Home() {
           {answer ? <p className="px-2 pt-3 text-sm leading-6">{answer.answer}</p> : null}
         </GlassPanel>
 
-        {preview ? <SmartPreview onKindChange={updatePreviewKind} onRemember={rememberRule} onSave={savePreview} preview={preview} /> : null}
+        {preview ? <SmartPreview onKindChange={updatePreviewKind} onRemember={rememberRule} onSave={savePreview} preview={preview} refNode={previewRef} /> : null}
 
         <GlassPanel className="p-4">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -464,7 +559,7 @@ export default function Home() {
           </div>
 
           {activeTab === "settings" ? (
-            <SettingsPanel settings={settings} onChange={updateSettings} rulesCount={learnedRules.length} />
+            <SettingsPanel onNavigate={selectTab} settings={settings} onChange={updateSettings} rulesCount={learnedRules.length} />
           ) : (
             <div className="grid gap-3">
               {undoEntry ? (
@@ -497,7 +592,9 @@ export default function Home() {
         </GlassPanel>
       </div>
 
-      <MobileDock activeTab={activeTab} onAdd={() => addManual("task")} onChange={setActiveTab} />
+      <MobileDock activeTab={activeTab} onAdd={openQuickSheet} onChange={selectTab} />
+      {quickSheetOpen ? <QuickInputSheet onClose={() => setQuickSheetOpen(false)} onText={focusTextInput} onVoice={startVoiceFromSheet} /> : null}
+      {toast ? <Toast detail={toast.detail} title={toast.title} /> : null}
     </main>
   );
 }
@@ -581,12 +678,12 @@ function DesktopSidebar({ activeTab, onChange }: { activeTab: TabId; onChange: (
 function MobileDock({ activeTab, onAdd, onChange }: { activeTab: TabId; onAdd: () => void; onChange: (tab: TabId) => void }) {
   const mobileTabs: TabId[] = ["today", "week", "projects", "settings"];
   return (
-    <nav className="fixed inset-x-0 bottom-4 z-20 mx-auto flex w-[min(94vw,430px)] items-center justify-between rounded-full border border-white/50 bg-white/55 px-3 py-2 shadow-2xl backdrop-blur-2xl md:hidden dark:border-white/10 dark:bg-zinc-950/55">
+    <nav className="fixed inset-x-0 bottom-0 z-[70] mx-auto flex w-[min(94vw,430px)] items-center justify-between rounded-full border border-white/50 bg-white/70 px-3 py-2 shadow-2xl backdrop-blur-2xl md:hidden dark:border-white/10 dark:bg-zinc-950/70 mb-[calc(12px+env(safe-area-inset-bottom))]">
       {mobileTabs.slice(0, 2).map((id) => {
         const tab = tabs.find((item) => item.id === id)!;
         return <DockButton active={activeTab === id} icon={<tab.icon size={19} />} key={id} label={tab.label} onClick={() => onChange(id)} />;
       })}
-      <button className="grid h-14 w-14 place-items-center rounded-full bg-[var(--foreground)] text-[var(--background)] shadow-xl" onClick={onAdd} type="button">
+      <button className="grid h-14 w-14 min-w-14 place-items-center rounded-full bg-[var(--foreground)] text-[var(--background)] shadow-xl" onClick={onAdd} type="button" aria-label="Быстрый ввод">
         <Plus size={24} />
       </button>
       {mobileTabs.slice(2).map((id) => {
@@ -599,7 +696,7 @@ function MobileDock({ activeTab, onAdd, onChange }: { activeTab: TabId; onAdd: (
 
 function DockButton({ active, icon, label, onClick }: { active: boolean; icon: React.ReactNode; label: string; onClick: () => void }) {
   return (
-    <button className={`grid min-h-12 min-w-12 place-items-center rounded-full px-2 text-[11px] font-bold ${active ? "bg-white/70 shadow-sm dark:bg-white/12" : "text-[var(--muted)]"}`} onClick={onClick} type="button">
+    <button className={`grid min-h-12 min-w-12 place-items-center rounded-full px-2 text-[11px] font-bold ${active ? "bg-white/70 shadow-sm dark:bg-white/12" : "text-[var(--muted)]"}`} onClick={onClick} type="button" aria-current={active ? "page" : undefined}>
       {icon}
       <span>{label}</span>
     </button>
@@ -623,22 +720,24 @@ function SmartPreview({
   onKindChange,
   onRemember,
   onSave,
-  preview
+  preview,
+  refNode
 }: {
   onKindChange: (index: number, kind: EntryKind) => void;
   onRemember: (index: number) => void;
   onSave: () => void;
   preview: AIParseResult;
+  refNode: React.RefObject<HTMLElement | null>;
 }) {
   return (
-    <GlassPanel className="p-4">
+    <GlassPanel className="p-4" ref={refNode}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-black">Я понял так</h2>
-          <p className="text-sm text-[var(--muted)]">Confidence: {confidenceLabel(preview.confidence)} · {Math.round(preview.confidence * 100)}%</p>
+          <h2 className="text-2xl font-black">Готово — найдено {preview.items.length} {pluralRecords(preview.items.length)}</h2>
+          <p className="text-sm text-[var(--muted)]">Я понял так. Проверь карточки и сохрани всё.</p>
         </div>
         <GlassButton className="px-5 font-bold text-white [background:linear-gradient(135deg,#176bff,#7b61ff)]" onClick={onSave}>
-          Сохранить
+          Сохранить всё
         </GlassButton>
       </div>
       <div className="grid gap-3 md:grid-cols-2">
@@ -660,11 +759,16 @@ function SmartPreview({
               <span>{item.projectPath?.length ? item.projectPath.join(" -> ") : "без проекта"}</span>
               <span>{item.dueDate ? formatDateRu(item.dueDate) : item.schedule}</span>
               {item.totalPrice || item.unitPrice ? <span>{item.quantity ? `${item.quantity} × ` : ""}{item.unitPrice ?? item.totalPrice} {item.currency ?? "RUB"}</span> : null}
-              <span>parsedBy: {item.parsedBy ?? "local"} · {Math.round((item.confidence ?? preview.confidence) * 100)}%</span>
+              {(item.confidence ?? preview.confidence) < 0.75 || item.needsReview ? (
+                <span className="font-bold text-[var(--amber)]">Проверь: уверенность {confidenceLabel(item.confidence ?? preview.confidence).toLowerCase()}</span>
+              ) : null}
             </div>
             <div className="mt-3 flex gap-2">
               <GlassButton className="px-3 text-sm" onClick={() => onRemember(index)}>
                 Запомнить правило
+              </GlassButton>
+              <GlassButton className="px-3 text-sm" onClick={() => onKindChange(index, "inbox")}>
+                Исправить позже
               </GlassButton>
             </div>
           </GlassCard>
@@ -733,9 +837,33 @@ function EntryRow({
   );
 }
 
-function SettingsPanel({ settings, onChange, rulesCount }: { settings: AppSettings; onChange: (settings: AppSettings) => void; rulesCount: number }) {
+function SettingsPanel({
+  onNavigate,
+  settings,
+  onChange,
+  rulesCount
+}: {
+  onNavigate: (tab: TabId) => void;
+  settings: AppSettings;
+  onChange: (settings: AppSettings) => void;
+  rulesCount: number;
+}) {
   return (
     <div className="grid gap-4">
+      <GlassCard className="grid gap-2 p-4">
+        <h3 className="text-lg font-black">Разделы</h3>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {(["inbox", "tasks", "purchases", "ideas", "projects", "today"] as TabId[]).map((tabId) => {
+            const tab = tabs.find((item) => item.id === tabId)!;
+            return (
+              <GlassButton className="justify-start px-3 text-sm font-bold" key={tabId} onClick={() => onNavigate(tabId)}>
+                <tab.icon size={17} />
+                {tab.label}
+              </GlassButton>
+            );
+          })}
+        </div>
+      </GlassCard>
       <GlassCard className="grid gap-3 p-4">
         <label className="flex items-center justify-between gap-3">
           <span>
@@ -743,6 +871,17 @@ function SettingsPanel({ settings, onChange, rulesCount }: { settings: AppSettin
             <span className="text-sm text-[var(--muted)]">Local smart parser работает всегда; AI используется только как fallback.</span>
           </span>
           <input checked={settings.aiEnabled} type="checkbox" onChange={(event) => onChange({ ...settings, aiEnabled: event.target.checked })} />
+        </label>
+        <label className="flex items-center justify-between gap-3">
+          <span>
+            <span className="block font-bold">Автосохранение после разбора</span>
+            <span className="text-sm text-[var(--muted)]">После STOP сохранит записи автоматически, только если parser уверен.</span>
+          </span>
+          <input
+            checked={settings.autoSaveAfterParse}
+            type="checkbox"
+            onChange={(event) => onChange({ ...settings, autoSaveAfterParse: event.target.checked })}
+          />
         </label>
         <label className="grid gap-1">
           <span className="text-sm font-bold">Provider</span>
@@ -767,6 +906,68 @@ function SettingsPanel({ settings, onChange, rulesCount }: { settings: AppSettin
       </GlassCard>
     </div>
   );
+}
+
+function QuickInputSheet({ onClose, onText, onVoice }: { onClose: () => void; onText: () => void; onVoice: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/20 px-4 pb-[calc(16px+env(safe-area-inset-bottom))] backdrop-blur-sm" onClick={onClose}>
+      <GlassPanel className="w-full max-w-md p-4" onClick={(event) => event.stopPropagation()}>
+        <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-white/70 dark:bg-white/20" />
+        <h2 className="text-2xl font-black">Быстрый ввод</h2>
+        <p className="mt-1 text-sm text-[var(--muted)]">Начни диктовку или просто напиши текст. После остановки запись разберется автоматически.</p>
+        <div className="mt-5 grid gap-3">
+          <GlassButton className="h-14 justify-start px-5 text-base font-black text-white [background:linear-gradient(135deg,#176bff,#7b61ff)]" onClick={onVoice}>
+            <Mic size={22} />
+            Начать запись
+          </GlassButton>
+          <GlassButton className="h-14 justify-start px-5 text-base font-black" onClick={onText}>
+            <Plus size={22} />
+            Написать
+          </GlassButton>
+          <GlassButton className="h-12 px-5 font-bold" onClick={onClose}>
+            Отмена
+          </GlassButton>
+        </div>
+      </GlassPanel>
+    </div>
+  );
+}
+
+function Toast({ detail, title }: { detail?: string; title: string }) {
+  return (
+    <div className="fixed left-1/2 top-4 z-[90] w-[min(92vw,420px)] -translate-x-1/2">
+      <GlassCard className="p-4">
+        <div className="font-black">{title}</div>
+        {detail ? <div className="mt-1 text-sm text-[var(--muted)]">{detail}</div> : null}
+      </GlassCard>
+    </div>
+  );
+}
+
+function pluralRecords(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return "запись";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "записи";
+  return "записей";
+}
+
+function summarizeKinds(entries: DiaryEntry[]): string {
+  const counts = entries.reduce(
+    (acc, entry) => {
+      acc[entry.kind] += 1;
+      return acc;
+    },
+    { task: 0, purchase: 0, idea: 0, inbox: 0 } satisfies Record<EntryKind, number>
+  );
+  return [
+    counts.task ? `${counts.task} задач` : "",
+    counts.purchase ? `${counts.purchase} покупок` : "",
+    counts.idea ? `${counts.idea} идей` : "",
+    counts.inbox ? `${counts.inbox} в Inbox` : ""
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function EmptyState({ onAdd }: { onAdd: () => void }) {

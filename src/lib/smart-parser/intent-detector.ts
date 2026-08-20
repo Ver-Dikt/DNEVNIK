@@ -23,12 +23,14 @@ export function detectIntent(text: string, learnedRules: LearnedRule[] = []): In
     }
   }
 
-  if (best.intent === "unknown" && /(?:https?:\/\/|www\.)/i.test(text)) {
-    best = { intent: "link", confidence: 0.72, matchedText: "url" };
+  const hasPriceContext = /\b\d+[\s.,]?\d*\s*(?:руб|р|₽|\$|доллар|бакс|евро|nok|крон)/i.test(text);
+
+  if ((best.intent === "unknown" || best.intent === "link") && hasPriceContext) {
+    best = { intent: "purchase", confidence: 0.72, matchedText: "price context" };
   }
 
-  if (best.intent === "unknown" && /\b\d+[\s.,]?\d*\s*(?:руб|р|₽|\$|доллар|бакс|евро|nok|крон)/i.test(text)) {
-    best = { intent: "purchase", confidence: 0.72, matchedText: "price context" };
+  if (best.intent === "unknown" && /(?:https?:\/\/|www\.)/i.test(text)) {
+    best = { intent: "link", confidence: 0.72, matchedText: "url" };
   }
 
   return best;
