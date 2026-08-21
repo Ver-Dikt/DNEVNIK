@@ -1,8 +1,9 @@
-const CACHE_NAME = "dnevnik-v4-family-core";
+const CACHE_NAME = "dnevnik-v5-calendar-memory-core";
 const APP_SHELL = ["./", "./manifest.json", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL).catch(() => undefined)));
+  self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
@@ -10,6 +11,7 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then(() => self.clients.claim())
   );
 });
 

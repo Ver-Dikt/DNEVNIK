@@ -223,4 +223,85 @@ describe("parseSmartInput", () => {
     const result = parseSmartInput("Когда-нибудь купить новый контроллер.", familyCtx);
     expect(result.items[0]?.schedule).toBe("someday");
   });
+
+  it("detects work area without creating random project", () => {
+    const result = parseSmartInput("По работе надо проверить микшер в заведении", familyCtx);
+    expect(result.items[0]?.kind).toBe("task");
+    expect(result.items[0]?.area).toBe("Работа");
+    expect(result.items[0]?.projectCandidate).toBeUndefined();
+  });
+
+  it("detects work tomorrow task", () => {
+    const result = parseSmartInput("По работе завтра надо проверить микшер в заведении", familyCtx);
+    expect(result.items[0]?.area).toBe("Работа");
+    expect(result.items[0]?.schedule).toBe("tomorrow");
+  });
+
+  it("detects tomorrow client master task", () => {
+    const result = parseSmartInput("Завтра отправить мастер клиенту", familyCtx);
+    expect(result.items[0]?.schedule).toBe("tomorrow");
+    expect(result.items[0]?.area).toBe("Работа");
+  });
+
+  it("keeps no-date music task unscheduled", () => {
+    const result = parseSmartInput("Свести Grafton", familyCtx);
+    expect(result.items[0]?.schedule).toBe("none");
+  });
+
+  it("parses saturday paint purchase", () => {
+    const result = parseSmartInput("В субботу для гардероба купить две банки краски по 1800 рублей.", familyCtx);
+    expect(result.items[0]?.kind).toBe("purchase");
+    expect(result.items[0]?.dueDate).toBeTruthy();
+    expect(result.items[0]?.totalPrice).toBe(3600);
+  });
+
+  it("parses three cables per-unit price", () => {
+    const result = parseSmartInput("Купить три кабеля по 700", familyCtx);
+    expect(result.items[0]?.quantity).toBe(3);
+    expect(result.items[0]?.totalPrice).toBe(2100);
+  });
+
+  it("parses daily recurring task", () => {
+    const result = parseSmartInput("Каждый день проверить календарь", familyCtx);
+    expect(result.items[0]?.repeat).toBe("daily");
+  });
+
+  it("parses monthly recurring task", () => {
+    const result = parseSmartInput("Каждый месяц оплачивать интернет", familyCtx);
+    expect(result.items[0]?.repeat).toBe("monthly");
+  });
+
+  it("parses first day monthly recurring task", () => {
+    const result = parseSmartInput("Каждого первого числа оплатить интернет", familyCtx);
+    expect(result.items[0]?.repeat).toBe("monthly_first");
+  });
+
+  it("parses explicit time", () => {
+    const result = parseSmartInput("Завтра в 09:30 отправить мастер клиенту", familyCtx);
+    expect(result.items[0]?.time).toBe("09:30");
+  });
+
+  it("splits required v3 multi-item dictation", () => {
+    const result = parseSmartInput("Завтра свести Grafton, домой купить порошок, а ещё идея для студии сделать новую подсветку.", familyCtx);
+    expect(result.items).toHaveLength(3);
+    expect(result.items.map((item) => item.kind)).toEqual(["task", "purchase", "idea"]);
+  });
+
+  it("parses shared home powder and food purchases", () => {
+    const result = parseSmartInput("Нам домой купить порошок и корм", familyCtx);
+    expect(result.items).toHaveLength(2);
+    expect(result.items.every((item) => item.assignedTo === "shared")).toBe(true);
+  });
+
+  it("preserves raw text on unknown", () => {
+    const result = parseSmartInput("Там с этой штукой разобраться", familyCtx);
+    expect(result.items[0]?.sourceText).toContain("штукой");
+    expect(result.needsReview).toBe(true);
+  });
+
+  it("detects studio idea area", () => {
+    const result = parseSmartInput("Идея для студии сделать новую подсветку", familyCtx);
+    expect(result.items[0]?.kind).toBe("idea");
+    expect(result.items[0]?.area).toBe("Студия");
+  });
 });

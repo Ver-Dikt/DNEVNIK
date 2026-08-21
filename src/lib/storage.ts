@@ -63,7 +63,8 @@ const financeKey = "dnevnik.finance";
 const savingsKey = "dnevnik.savings";
 const storageVersionKey = "dnevnik.storageVersion";
 const backupV2Key = "dnevnik.backup.v2";
-const currentStorageVersion = "3";
+const backupV3Key = "dnevnik.backup.v3-pre-migration";
+const currentStorageVersion = "4";
 const seedIds = new Set(["seed-task", "seed-purchase", "seed-idea"]);
 
 export const defaultMembers: Member[] = [
@@ -92,6 +93,10 @@ export const defaultKnowledge: KnowledgeStore = {
     studio_equipment: {
       area: "Студия",
       keywords: ["xlr", "микшер", "контроллер", "фейдер", "потенциометр", "колонка", "акустика", "кабель", "усилитель"]
+    },
+    work: {
+      area: "Работа",
+      keywords: ["работа", "клиент", "заказ", "смена", "площадка", "заведение", "мероприятие", "согласовать", "отправить клиенту", "афиша", "бар"]
     }
   },
   aliases: {
@@ -113,6 +118,7 @@ export const defaultKnowledge: KnowledgeStore = {
   phraseMappings: {
     свести: { area: "Музыка", intent: "task" },
     мастер: { area: "Музыка", intent: "task" },
+    работа: { area: "Работа", intent: "task" },
     купить: { intent: "purchase" }
   },
   corrections: []
@@ -304,6 +310,7 @@ function migrateStorage(): void {
     settings: readJson<Partial<AppSettings>>(settingsKey, {})
   };
   if (!localStorage.getItem(backupV2Key)) localStorage.setItem(backupV2Key, JSON.stringify({ ...previous, backedUpAt: new Date().toISOString() }));
+  if (!localStorage.getItem(backupV3Key)) localStorage.setItem(backupV3Key, JSON.stringify({ ...previous, backedUpAt: new Date().toISOString() }));
 
   const migratedEntries = previous.entries.filter((entry) => !seedIds.has(entry.id)).map(normalizeEntry);
   const projectMap = new Map<string, ProjectNode>();
@@ -344,6 +351,7 @@ function normalizeEntry(entry: DiaryEntry): DiaryEntry {
           status: entry.purchase?.status ?? (entry.status === "bought" ? "purchased" : "planned"),
           quantity: entry.purchase?.quantity ?? entry.quantity,
           unitPrice: entry.purchase?.unitPrice ?? entry.unitPrice,
+          plannedPrice: entry.purchase?.plannedPrice ?? entry.purchase?.totalPrice ?? entry.totalPrice,
           totalPrice: entry.purchase?.totalPrice ?? entry.totalPrice,
           currency: entry.purchase?.currency ?? entry.currency ?? "RUB",
           store: entry.purchase?.store ?? entry.store,
@@ -365,6 +373,8 @@ function normalizeEntry(entry: DiaryEntry): DiaryEntry {
     createdBy: entry.createdBy ?? "me",
     updatedBy: entry.updatedBy ?? "me",
     purchase,
+    repeat: entry.repeat ?? "none",
+    checklist: entry.checklist ?? [],
     needsReview: Boolean(entry.needsReview),
     revision: entry.revision ?? 1
   };

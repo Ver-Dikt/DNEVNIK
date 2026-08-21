@@ -22,7 +22,8 @@ export type SchedulePreset =
 export type AssignedTo = "me" | "partner" | "shared";
 export type Visibility = "private" | "shared";
 export type PurchaseStatus = "planned" | "researching" | "selected" | "ordered" | "purchased" | "cancelled";
-export type DomainId = "music" | "home" | "studio_equipment" | "general";
+export type DomainId = "music" | "home" | "work" | "studio_equipment" | "general";
+export type RepeatRule = "none" | "daily" | "weekly" | "monthly" | "weekly_monday" | "monthly_first";
 
 export interface Member {
   id: "me" | "partner";
@@ -45,6 +46,7 @@ export interface PurchaseDetails {
   quantity?: number;
   unit?: string;
   unitPrice?: number;
+  plannedPrice?: number;
   totalPrice?: number;
   currency?: string;
   store?: string;
@@ -77,7 +79,16 @@ export interface DiaryEntry {
   status: EntryStatus;
   priority: Priority;
   dueDate?: string;
+  time?: string;
+  repeat?: RepeatRule;
   schedule: SchedulePreset;
+  parentId?: string;
+  checklist?: Array<{
+    id: string;
+    title: string;
+    done: boolean;
+    createdAt: string;
+  }>;
   quantity?: number;
   unitPrice?: number;
   totalPrice?: number;

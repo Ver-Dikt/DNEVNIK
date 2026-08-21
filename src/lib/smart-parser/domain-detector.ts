@@ -5,6 +5,13 @@ export function detectDomain(text: string, knowledge: KnowledgeStore = defaultKn
   const normalized = text.toLowerCase();
   let best: { domain: DomainId; area: string; confidence: number; matchedText?: string } = { domain: "general", area: "Личное", confidence: 0.2 };
 
+  if (/(^|\s)(по\s+работе|для\s+работы|клиенту|клиент|заведении|заведение)(?=\s|$)/i.test(normalized)) {
+    best = { domain: "work", area: "Работа", confidence: 0.94, matchedText: "work context" };
+  }
+  if (/(^|\s)(для\s+студии|в\s+студии|студия)(?=\s|$)/i.test(normalized)) {
+    best = { domain: "studio_equipment", area: "Студия", confidence: 0.92, matchedText: "studio context" };
+  }
+
   for (const [domain, config] of Object.entries(knowledge.domains)) {
     for (const keyword of config.keywords) {
       if (!normalized.includes(keyword.toLowerCase())) continue;

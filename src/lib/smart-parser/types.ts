@@ -1,4 +1,4 @@
-import type { AppSettings, Area, AssignedTo, DomainId, EntryKind, EntryStatus, KnowledgeStore, Priority, ProjectNode, PurchaseDetails, RecentContext, SchedulePreset, Visibility } from "@/lib/types";
+import type { AppSettings, Area, AssignedTo, DomainId, EntryKind, EntryStatus, KnowledgeStore, Priority, ProjectNode, PurchaseDetails, RecentContext, RepeatRule, SchedulePreset, Visibility } from "@/lib/types";
 
 export type SmartIntent = EntryKind | "note" | "link" | "reminder" | "waiting" | "project_related" | "unknown";
 
@@ -83,6 +83,8 @@ export interface SmartParsedItem {
   priority: Priority;
   schedule: SchedulePreset;
   dueDate?: string;
+  time?: string;
+  repeat?: RepeatRule;
   quantity?: number;
   unitPrice?: number;
   totalPrice?: number;

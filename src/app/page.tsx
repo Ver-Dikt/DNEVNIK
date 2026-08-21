@@ -55,7 +55,7 @@ import {
   storageVersion
 } from "@/lib/storage";
 import { GlassBadge, GlassButton, GlassCard, GlassInput, GlassPanel, GlassSegmentedControl, GlassTextarea } from "@/components/glass";
-import type { AIParseResult, AIQueryResult, AppSettings, Area, AssignedTo, DiaryEntry, EntryKind, FinanceTransaction, KnowledgeStore, Member, ProjectNode, SchedulePreset, SavingsGoal } from "@/lib/types";
+import type { AIParseResult, AIQueryResult, AppSettings, Area, AssignedTo, DiaryEntry, EntryKind, EntryStatus, FinanceTransaction, KnowledgeStore, Member, ProjectNode, PurchaseStatus, RepeatRule, SchedulePreset, SavingsGoal } from "@/lib/types";
 import type { LearnedRule } from "@/lib/smart-parser/types";
 
 type BrowserSpeechRecognition = {
@@ -81,6 +81,7 @@ declare global {
 }
 
 const tabs = [
+  { id: "plan", label: "План", icon: CalendarDays },
   { id: "today", label: "Сегодня", icon: CalendarDays },
   { id: "week", label: "Неделя", icon: Clock3 },
   { id: "all", label: "Все записи", icon: Check },
@@ -125,8 +126,11 @@ export default function Home() {
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [learnedRules, setLearnedRules] = useState<LearnedRule[]>([]);
-  const [activeTab, setActiveTab] = useState<TabId>("today");
+  const [activeTab, setActiveTab] = useState<TabId>("plan");
   const [ownerFilter, setOwnerFilter] = useState<"me" | "shared" | "all">("all");
+  const [planMode, setPlanMode] = useState<"day" | "week" | "month">("day");
+  const [selectedDate, setSelectedDate] = useState(todayIso());
+  const [purchaseView, setPurchaseView] = useState<PurchaseStatus>("planned");
   const [quickText, setQuickText] = useState("");
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState<AIQueryResult | null>(null);
@@ -140,11 +144,13 @@ export default function Home() {
   const [isHydrated, setIsHydrated] = useState(false);
   const [toast, setToast] = useState<{ title: string; detail?: string; actionLabel?: string; onAction?: () => void } | null>(null);
   const [quickSheetOpen, setQuickSheetOpen] = useState(false);
+  const [captureOpen, setCaptureOpen] = useState(false);
   const [editingPreviewIndex, setEditingPreviewIndex] = useState<number | null>(null);
   const [highlightEntryId, setHighlightEntryId] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [selectedArea, setSelectedArea] = useState<string | null>(null);
   const [draftRecovered, setDraftRecovered] = useState(false);
+  const [detailEntryId, setDetailEntryId] = useState<string | null>(null);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const keepListeningRef = useRef(false);
   const voiceBaseTextRef = useRef("");
@@ -174,7 +180,19 @@ export default function Home() {
     if (savedPreview?.preview) setPreview(savedPreview.preview);
     setIsHydrated(true);
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register(`${appBasePath}/sw.js`, { scope: `${appBasePath || "/"}` }).catch(() => undefined);
+      navigator.serviceWorker
+        .register(`${appBasePath}/sw.js`, { scope: `${appBasePath || "/"}` })
+        .then((registration) => {
+          registration.addEventListener("updatefound", () => {
+            const worker = registration.installing;
+            worker?.addEventListener("statechange", () => {
+              if (worker.state === "installed" && navigator.serviceWorker.controller) {
+                setToast({ title: "Доступна новая версия", detail: "Обнови страницу, чтобы увидеть свежий интерфейс.", actionLabel: "Обновить", onAction: () => window.location.reload() });
+              }
+            });
+          });
+        })
+        .catch(() => undefined);
     }
     setSpeechSupported(Boolean(window.SpeechRecognition || window.webkitSpeechRecognition));
   }, []);
@@ -249,7 +267,6 @@ export default function Home() {
   const todayEntries = activeEntries.filter((entry) => entry.dueDate === todayIso() || entry.schedule === "today" || isOverdue(entry.dueDate));
   const importantEntries = activeEntries.filter((entry) => entry.priority === "high");
   const budgetSummary = useMemo(() => calculateBudget(entries), [entries]);
-  const purchaseTotal = budgetSummary.planned + budgetSummary.actual;
   const recentContext = useMemo(() => {
     const latest = entries.find((entry) => entry.area || entry.project || entry.domain);
     return latest
@@ -276,6 +293,7 @@ export default function Home() {
         listMode === "this" ? entry.schedule === "this_week" || isThisWeek(entry.dueDate) : entry.schedule === "next_week"
       );
     }
+    if (activeTab === "plan") return base.filter((entry) => entry.status !== "done");
     if (activeTab === "tasks") return base.filter((entry) => entry.kind === "task");
     if (activeTab === "purchases") return base.filter((entry) => entry.kind === "purchase");
     if (activeTab === "ideas") return base.filter((entry) => entry.kind === "idea");
@@ -285,6 +303,24 @@ export default function Home() {
     if (activeTab === "budget") return base.filter((entry) => entry.kind === "purchase");
     return base;
   }, [activeTab, entries, listMode, ownerFilter]);
+
+  const planData = useMemo(() => {
+    const base = entries.filter((entry) => entry.status !== "done" && entry.status !== "cancelled" && matchesOwner(entry, ownerFilter));
+    const today = todayIso();
+    const weekDays = getWeekDays(selectedDate);
+    const monthPrefix = selectedDate.slice(0, 7);
+    return {
+      weekDays,
+      overdue: base.filter((entry) => Boolean(entry.dueDate) && entry.dueDate! < today),
+      selected: base.filter((entry) => entry.dueDate === selectedDate || (selectedDate === today && entry.schedule === "today")),
+      week: base.filter((entry) => entry.dueDate ? weekDays.includes(entry.dueDate) : entry.schedule === "this_week"),
+      month: base.filter((entry) => entry.dueDate?.startsWith(monthPrefix) || entry.schedule === "this_month"),
+      unscheduled: base.filter((entry) => !entry.dueDate && entry.schedule === "none"),
+      someday: base.filter((entry) => entry.schedule === "someday")
+    };
+  }, [entries, ownerFilter, selectedDate]);
+
+  const selectedDetailEntry = detailEntryId ? entries.find((entry) => entry.id === detailEntryId) ?? null : null;
 
   async function parseText(inputText: string, options: { autoSaveEligible?: boolean; source?: "voice" | "button" } = {}) {
     const text = inputText.trim();
@@ -496,6 +532,8 @@ export default function Home() {
         status: kind === "purchase" ? "want_to_buy" : "active",
         priority: "normal",
         schedule: "none",
+        repeat: "none",
+        checklist: [],
         originalInput: text,
         parsedBy: "manual",
         confidence: 1,
@@ -600,12 +638,19 @@ export default function Home() {
 
   function setToastForSaved(saved: DiaryEntry[]) {
     const firstKind = saved[0]?.kind ?? "inbox";
-    const targetTab = firstKind === "purchase" ? "purchases" : firstKind === "task" ? "tasks" : firstKind === "idea" ? "ideas" : "inbox";
+    const first = saved[0];
+    const targetTab = firstKind === "purchase" ? "purchases" : firstKind === "idea" ? "ideas" : firstKind === "inbox" ? "inbox" : "plan";
+    const actionLabel = first?.project ? "Открыть проект" : first?.dueDate || first?.schedule === "today" ? "Открыть дату" : "Открыть";
     setToast({
       title: saved.length === 1 ? `✓ Сохранено в ${sectionLabel(firstKind)}` : `✓ Сохранено: ${summarizeKinds(saved)}`,
       detail: saved.length === 1 ? saved[0]?.title : undefined,
-      actionLabel: "Открыть",
+      actionLabel,
       onAction: () => {
+        if (first?.dueDate) setSelectedDate(first.dueDate);
+        if (first?.project) {
+          setSelectedArea(first.area ?? null);
+          setSelectedProject(first.project);
+        }
         selectTab(targetTab);
         setHighlightEntryId(saved[0]?.id ?? null);
       }
@@ -663,7 +708,16 @@ export default function Home() {
   }
 
   function deleteEntry(id: string) {
+    const deleted = entries.find((entry) => entry.id === id);
     setEntries((current) => current.filter((item) => item.id !== id));
+    if (deleted) {
+      setToast({
+        title: "Удалено",
+        detail: deleted.title,
+        actionLabel: "Отменить",
+        onAction: () => setEntries((current) => [deleted, ...current])
+      });
+    }
   }
 
   function updateSettings(next: AppSettings) {
@@ -759,11 +813,13 @@ export default function Home() {
 
   function focusTextInput() {
     setQuickSheetOpen(false);
+    setCaptureOpen(true);
     window.setTimeout(() => textareaRef.current?.focus(), 120);
   }
 
   function startVoiceFromSheet() {
     setQuickSheetOpen(false);
+    setCaptureOpen(true);
     window.setTimeout(() => {
       if (!isListening) toggleVoiceInput();
     }, 120);
@@ -800,7 +856,7 @@ export default function Home() {
           </GlassPanel>
         ) : null}
 
-        {(activeTab === "today" || activeTab === "week") ? (
+        {activeTab === "plan" ? (
           <GlassSegmentedControl
             onChange={(value) => setOwnerFilter(value as "me" | "shared" | "all")}
             options={[
@@ -812,6 +868,7 @@ export default function Home() {
           />
         ) : null}
 
+        {captureOpen || quickText || isListening ? (
         <GlassPanel className="overflow-hidden p-4 sm:p-5">
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
             <div>
@@ -831,17 +888,8 @@ export default function Home() {
                   <Sparkles size={18} />
                   {isParsing ? "Разбираю..." : "Разобрать"}
                 </GlassButton>
-                <GlassButton className="px-4 font-semibold" onClick={() => addManual("task")}>
-                  <Plus size={18} />
-                  Задача
-                </GlassButton>
-                <GlassButton className="px-4 font-semibold" onClick={() => addManual("purchase")}>
-                  <ShoppingCart size={18} />
-                  Покупка
-                </GlassButton>
-                <GlassButton className="px-4 font-semibold" onClick={() => addManual("idea")}>
-                  <Lightbulb size={18} />
-                  Идея
+                <GlassButton className="px-4 font-semibold" onClick={() => setCaptureOpen(false)}>
+                  Свернуть
                 </GlassButton>
               </div>
             </div>
@@ -864,31 +912,7 @@ export default function Home() {
             </div>
           </div>
         </GlassPanel>
-
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="Сегодня" value={`${todayEntries.length}`} detail={`${importantEntries.length} важные`} icon={<CalendarDays size={18} />} />
-          <MetricCard label="Неделя" value={`${entries.filter((entry) => entry.schedule === "this_week").length}`} detail="в работе" icon={<Clock3 size={18} />} />
-          <MetricCard label="Покупки" value={purchaseTotal ? `${purchaseTotal.toLocaleString("ru-RU")} ₽` : "0 ₽"} detail="примерная сумма" icon={<WalletCards size={18} />} />
-          <MetricCard label="Inbox" value={`${entries.filter((entry) => entry.kind === "inbox" || entry.needsReview).length}`} detail="на разбор" icon={<Inbox size={18} />} />
-        </div>
-
-        <GlassPanel className="p-3">
-          <div className="flex gap-2">
-            <GlassInput
-              className="h-12 min-w-0 flex-1 px-4"
-              placeholder="Спросить ежедневник..."
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") void askDiary();
-              }}
-            />
-            <GlassButton className="grid h-12 w-12 place-items-center text-white [background:linear-gradient(135deg,#1b6cff,#22a6f2)]" onClick={askDiary} title="Спросить">
-              <Search size={19} />
-            </GlassButton>
-          </div>
-          {answer ? <p className="px-2 pt-3 text-sm leading-6">{answer.answer}</p> : null}
-        </GlassPanel>
+        ) : null}
 
         {preview ? (
           <SmartPreview
@@ -923,15 +947,32 @@ export default function Home() {
             ) : null}
           </div>
 
-          {activeTab === "settings" ? (
+          {activeTab === "plan" ? (
+            <PlanScreen
+              highlightedId={highlightEntryId}
+              mode={planMode}
+              onComplete={completeEntry}
+              onDateChange={setSelectedDate}
+              onDelete={deleteEntry}
+              onModeChange={setPlanMode}
+              onOpen={(entry) => setDetailEntryId(entry.id)}
+              onUpdate={updateEntry}
+              planData={planData}
+              selectedDate={selectedDate}
+            />
+          ) : activeTab === "settings" ? (
             <SettingsPanel
+              answer={answer}
               onClearAll={clearEverything}
               onClearEntries={clearAllEntries}
               onClearRules={clearRules}
               onExport={exportLocalData}
               onImport={importLocalData}
               onNavigate={selectTab}
+              onAsk={askDiary}
               members={members}
+              query={query}
+              setQuery={setQuery}
               settings={settings}
               onChange={updateSettings}
               rulesCount={learnedRules.length}
@@ -959,6 +1000,18 @@ export default function Home() {
               projects={projects}
               selectedArea={selectedArea}
               selectedProject={selectedProject}
+              onOpen={(entry) => setDetailEntryId(entry.id)}
+            />
+          ) : activeTab === "purchases" ? (
+            <PurchasesScreen
+              entries={entries.filter((entry) => entry.kind === "purchase" && entry.status !== "cancelled" && matchesOwner(entry, ownerFilter))}
+              highlightedId={highlightEntryId}
+              onDelete={deleteEntry}
+              onOpen={(entry) => setDetailEntryId(entry.id)}
+              onStatusChange={(entry, status) => updateEntry(entry.id, { purchase: { ...entry.purchase, status }, status: purchaseStatusToEntryStatus(status) })}
+              onUpdate={updateEntry}
+              status={purchaseView}
+              onStatusViewChange={setPurchaseView}
             />
           ) : (
             <div className="grid gap-3">
@@ -982,6 +1035,7 @@ export default function Home() {
                     key={entry.id}
                     onComplete={() => completeEntry(entry)}
                     onDelete={() => deleteEntry(entry.id)}
+                    onOpen={() => setDetailEntryId(entry.id)}
                     onUpdate={(patch) => updateEntry(entry.id, patch)}
                   />
                 ))
@@ -997,10 +1051,6 @@ export default function Home() {
       {quickSheetOpen ? (
         <QuickInputSheet
           onClose={() => setQuickSheetOpen(false)}
-          onManual={(kind) => {
-            setQuickSheetOpen(false);
-            addManual(kind);
-          }}
           onText={focusTextInput}
           onVoice={startVoiceFromSheet}
         />
@@ -1010,6 +1060,17 @@ export default function Home() {
           item={preview.items[editingPreviewIndex]}
           onChange={(patch) => updatePreviewItem(editingPreviewIndex, patch)}
           onClose={() => setEditingPreviewIndex(null)}
+        />
+      ) : null}
+      {selectedDetailEntry ? (
+        <EntryDetailSheet
+          entry={selectedDetailEntry}
+          onChange={(patch) => updateEntry(selectedDetailEntry.id, patch)}
+          onClose={() => setDetailEntryId(null)}
+          onDelete={() => {
+            deleteEntry(selectedDetailEntry.id);
+            setDetailEntryId(null);
+          }}
         />
       ) : null}
       {toast ? <Toast actionLabel={toast.actionLabel} detail={toast.detail} onAction={toast.onAction} title={toast.title} /> : null}
@@ -1095,7 +1156,7 @@ function Header({ todayCount, importantCount }: { todayCount: number; importantC
 }
 
 function DesktopSidebar({ activeTab, onChange }: { activeTab: TabId; onChange: (tab: TabId) => void }) {
-  const primaryTabs: TabId[] = ["today", "week", "projects", "settings"];
+  const primaryTabs: TabId[] = ["plan", "projects", "purchases", "settings"];
   return (
     <aside className="sticky top-4 hidden h-[calc(100vh-32px)] md:block">
       <GlassPanel className="flex h-full flex-col gap-2 p-3">
@@ -1125,7 +1186,7 @@ function DesktopSidebar({ activeTab, onChange }: { activeTab: TabId; onChange: (
 }
 
 function MobileDock({ activeTab, onAdd, onChange }: { activeTab: TabId; onAdd: () => void; onChange: (tab: TabId) => void }) {
-  const mobileTabs: TabId[] = ["today", "week", "projects", "settings"];
+  const mobileTabs: TabId[] = ["plan", "projects", "purchases", "settings"];
   return (
     <nav className="fixed inset-x-0 bottom-0 z-[70] mx-auto flex w-[min(94vw,430px)] items-center justify-between rounded-full border border-white/50 bg-white/70 px-3 py-2 shadow-2xl backdrop-blur-2xl md:hidden dark:border-white/10 dark:bg-zinc-950/70 mb-[calc(12px+env(safe-area-inset-bottom))]">
       {mobileTabs.slice(0, 2).map((id) => {
@@ -1318,6 +1379,204 @@ function BudgetPanel({
   );
 }
 
+function PlanScreen({
+  highlightedId,
+  mode,
+  onComplete,
+  onDateChange,
+  onDelete,
+  onModeChange,
+  onOpen,
+  onUpdate,
+  planData,
+  selectedDate
+}: {
+  highlightedId: string | null;
+  mode: "day" | "week" | "month";
+  onComplete: (entry: DiaryEntry) => void;
+  onDateChange: (date: string) => void;
+  onDelete: (id: string) => void;
+  onModeChange: (mode: "day" | "week" | "month") => void;
+  onOpen: (entry: DiaryEntry) => void;
+  onUpdate: (id: string, patch: Partial<DiaryEntry>) => void;
+  planData: {
+    weekDays: string[];
+    overdue: DiaryEntry[];
+    selected: DiaryEntry[];
+    week: DiaryEntry[];
+    month: DiaryEntry[];
+    unscheduled: DiaryEntry[];
+    someday: DiaryEntry[];
+  };
+  selectedDate: string;
+}) {
+  const primaryEntries = mode === "day" ? planData.selected : mode === "week" ? planData.week : planData.month;
+  return (
+    <div className="grid gap-4">
+      <div className="grid gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-xl font-black">{formatPlanDate(selectedDate)}</h3>
+            <p className="text-sm text-[var(--muted)]">Календарь, задачи, покупки и идеи в одном плане.</p>
+          </div>
+          <GlassSegmentedControl
+            onChange={(value) => onModeChange(value as "day" | "week" | "month")}
+            options={[
+              { label: "День", value: "day" },
+              { label: "Неделя", value: "week" },
+              { label: "Месяц", value: "month" }
+            ]}
+            value={mode}
+          />
+        </div>
+        <div className="grid grid-cols-7 gap-1.5">
+          {planData.weekDays.map((date) => (
+            <button
+              className={`min-h-16 rounded-2xl px-1 text-center text-sm font-black transition ${
+                date === selectedDate ? "bg-[var(--foreground)] text-[var(--background)] shadow-lg" : "bg-white/50 text-[var(--foreground)] dark:bg-white/8"
+              }`}
+              key={date}
+              onClick={() => onDateChange(date)}
+              type="button"
+            >
+              <span className="block text-[11px] opacity-70">{shortWeekday(date)}</span>
+              <span className="block text-lg">{Number(date.slice(8, 10))}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <PlanSection
+        entries={primaryEntries}
+        highlightedId={highlightedId}
+        onComplete={onComplete}
+        onDelete={onDelete}
+        onOpen={onOpen}
+        onUpdate={onUpdate}
+        title={mode === "day" ? "Выбранная дата" : mode === "week" ? "Неделя" : "Месяц"}
+      />
+      <PlanSection
+        entries={planData.overdue}
+        highlightedId={highlightedId}
+        onComplete={onComplete}
+        onDelete={onDelete}
+        onOpen={onOpen}
+        onUpdate={onUpdate}
+        title="Просрочено"
+      />
+      <PlanSection
+        entries={planData.unscheduled}
+        highlightedId={highlightedId}
+        onComplete={onComplete}
+        onDelete={onDelete}
+        onOpen={onOpen}
+        onUpdate={onUpdate}
+        title="Без даты"
+      />
+      <PlanSection
+        entries={planData.someday}
+        highlightedId={highlightedId}
+        onComplete={onComplete}
+        onDelete={onDelete}
+        onOpen={onOpen}
+        onUpdate={onUpdate}
+        title="Когда-нибудь"
+      />
+    </div>
+  );
+}
+
+function PlanSection({
+  entries,
+  highlightedId,
+  onComplete,
+  onDelete,
+  onOpen,
+  onUpdate,
+  title
+}: {
+  entries: DiaryEntry[];
+  highlightedId: string | null;
+  onComplete: (entry: DiaryEntry) => void;
+  onDelete: (id: string) => void;
+  onOpen: (entry: DiaryEntry) => void;
+  onUpdate: (id: string, patch: Partial<DiaryEntry>) => void;
+  title: string;
+}) {
+  if (!entries.length) return null;
+  return (
+    <section className="grid gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-base font-black">{title}</h3>
+        <GlassBadge>{entries.length}</GlassBadge>
+      </div>
+      <div className="grid gap-2">
+        {entries.map((entry) => (
+          <EntryRow
+            entry={entry}
+            highlighted={entry.id === highlightedId}
+            key={entry.id}
+            onComplete={() => onComplete(entry)}
+            onDelete={() => onDelete(entry.id)}
+            onOpen={() => onOpen(entry)}
+            onUpdate={(patch) => onUpdate(entry.id, patch)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PurchasesScreen({
+  entries,
+  highlightedId,
+  onDelete,
+  onOpen,
+  onStatusChange,
+  onStatusViewChange,
+  onUpdate,
+  status
+}: {
+  entries: DiaryEntry[];
+  highlightedId: string | null;
+  onDelete: (id: string) => void;
+  onOpen: (entry: DiaryEntry) => void;
+  onStatusChange: (entry: DiaryEntry, status: PurchaseStatus) => void;
+  onStatusViewChange: (status: PurchaseStatus) => void;
+  onUpdate: (id: string, patch: Partial<DiaryEntry>) => void;
+  status: PurchaseStatus;
+}) {
+  const options: Array<{ label: string; value: PurchaseStatus }> = [
+    { label: "Нужно", value: "planned" },
+    { label: "Выбрано", value: "selected" },
+    { label: "Заказано", value: "ordered" },
+    { label: "Куплено", value: "purchased" }
+  ];
+  const visible = entries.filter((entry) => normalizePurchaseStatus(entry) === status);
+  return (
+    <div className="grid gap-4">
+      <GlassSegmentedControl options={options} value={status} onChange={(value) => onStatusViewChange(value as PurchaseStatus)} />
+      <div className="grid gap-3">
+        {visible.length ? (
+          visible.map((entry) => (
+            <EntryRow
+              entry={entry}
+              highlighted={entry.id === highlightedId}
+              key={entry.id}
+              onComplete={() => onStatusChange(entry, "purchased")}
+              onDelete={() => onDelete(entry.id)}
+              onOpen={() => onOpen(entry)}
+              onUpdate={(patch) => onUpdate(entry.id, patch)}
+            />
+          ))
+        ) : (
+          <div className="py-10 text-center text-sm text-[var(--muted)]">В этом статусе покупок пока нет.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ProjectBoard({
   areas,
   entries,
@@ -1329,6 +1588,7 @@ function ProjectBoard({
   onSelect,
   onSelectArea,
   onUpdate,
+  onOpen,
   projects,
   selectedArea,
   selectedProject
@@ -1343,6 +1603,7 @@ function ProjectBoard({
   onSelect: (name: string) => void;
   onSelectArea: (name: string) => void;
   onUpdate: (id: string, patch: Partial<DiaryEntry>) => void;
+  onOpen: (entry: DiaryEntry) => void;
   projects: ProjectNode[];
   selectedArea: string | null;
   selectedProject: string | null;
@@ -1390,6 +1651,7 @@ function ProjectBoard({
               key={entry.id}
               onComplete={() => onComplete(entry)}
               onDelete={() => onDelete(entry.id)}
+              onOpen={() => onOpen(entry)}
               onUpdate={(patch) => onUpdate(entry.id, patch)}
             />
           ))
@@ -1437,12 +1699,14 @@ function EntryRow({
   highlighted,
   onComplete,
   onDelete,
+  onOpen,
   onUpdate
 }: {
   entry: DiaryEntry;
   highlighted?: boolean;
   onComplete: () => void;
   onDelete: () => void;
+  onOpen?: () => void;
   onUpdate: (patch: Partial<DiaryEntry>) => void;
 }) {
   const done = entry.status === "done";
@@ -1485,6 +1749,11 @@ function EntryRow({
             <option value="someday">Когда-нибудь</option>
             <option value="none">Без даты</option>
           </select>
+          {onOpen ? (
+            <button className="grid h-10 w-10 place-items-center rounded-full bg-white/50 text-[var(--muted)] dark:bg-white/10" onClick={onOpen} title="Открыть детали" type="button">
+              <MoreHorizontal size={16} />
+            </button>
+          ) : null}
           <button className="grid h-10 w-10 place-items-center rounded-full bg-white/50 text-[var(--muted)] dark:bg-white/10" onClick={onDelete} title="Удалить" type="button">
             <Trash2 size={16} />
           </button>
@@ -1495,25 +1764,33 @@ function EntryRow({
 }
 
 function SettingsPanel({
+  answer,
   onClearAll,
   onClearEntries,
   onClearRules,
   onExport,
   onImport,
   onNavigate,
+  onAsk,
   members,
+  query,
+  setQuery,
   settings,
   onChange,
   rulesCount,
   storageVersionLabel
 }: {
+  answer: AIQueryResult | null;
   onClearAll: () => void;
   onClearEntries: () => void;
   onClearRules: () => void;
   onExport: () => void;
   onImport: (file: File) => void;
   onNavigate: (tab: TabId) => void;
+  onAsk: () => void;
   members: Member[];
+  query: string;
+  setQuery: (value: string) => void;
   settings: AppSettings;
   onChange: (settings: AppSettings) => void;
   rulesCount: number;
@@ -1524,7 +1801,7 @@ function SettingsPanel({
       <GlassCard className="grid gap-2 p-4">
         <h3 className="text-lg font-black">Разделы</h3>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {(["all", "purchases", "budget", "ideas", "inbox", "someday", "projects", "today", "week"] as TabId[]).map((tabId) => {
+          {(["all", "purchases", "budget", "ideas", "inbox", "someday", "projects", "plan"] as TabId[]).map((tabId) => {
             const tab = tabs.find((item) => item.id === tabId)!;
             return (
               <GlassButton className="justify-start px-3 text-sm font-bold" key={tabId} onClick={() => onNavigate(tabId)}>
@@ -1534,6 +1811,24 @@ function SettingsPanel({
             );
           })}
         </div>
+      </GlassCard>
+      <GlassCard className="grid gap-3 p-4">
+        <h3 className="text-lg font-black">Поиск</h3>
+        <div className="flex gap-2">
+          <GlassInput
+            className="h-12 min-w-0 flex-1 px-4"
+            placeholder="Спросить ежедневник..."
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void onAsk();
+            }}
+          />
+          <GlassButton className="grid h-12 w-12 place-items-center text-white [background:linear-gradient(135deg,#1b6cff,#22a6f2)]" onClick={onAsk} title="Спросить">
+            <Search size={19} />
+          </GlassButton>
+        </div>
+        {answer ? <p className="text-sm leading-6 text-[var(--muted)]">{answer.answer}</p> : null}
       </GlassCard>
       <GlassCard className="grid gap-3 p-4">
         <h3 className="text-lg font-black">Семья</h3>
@@ -1741,7 +2036,174 @@ function PreviewEditSheet({
   );
 }
 
-function QuickInputSheet({ onClose, onManual, onText, onVoice }: { onClose: () => void; onManual: (kind: EntryKind) => void; onText: () => void; onVoice: () => void }) {
+function EntryDetailSheet({
+  entry,
+  onChange,
+  onClose,
+  onDelete
+}: {
+  entry: DiaryEntry;
+  onChange: (patch: Partial<DiaryEntry>) => void;
+  onClose: () => void;
+  onDelete: () => void;
+}) {
+  const [checklistText, setChecklistText] = useState("");
+  const purchaseStatus = normalizePurchaseStatus(entry);
+  return (
+    <div className="fixed inset-0 z-[85] flex items-end justify-center bg-black/25 px-4 pb-[calc(14px+env(safe-area-inset-bottom))] backdrop-blur-sm" onClick={onClose}>
+      <GlassPanel className="max-h-[90vh] w-full max-w-2xl overflow-auto p-4" onClick={(event) => event.stopPropagation()}>
+        <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-white/70 dark:bg-white/20" />
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <GlassBadge className={kindTone[entry.kind]}>{kindLabel[entry.kind]}</GlassBadge>
+            <h2 className="mt-2 text-2xl font-black">Детали записи</h2>
+          </div>
+          <button className="grid h-10 w-10 place-items-center rounded-full bg-white/60 text-xl font-black dark:bg-white/10" onClick={onClose} type="button" aria-label="Закрыть">
+            ×
+          </button>
+        </div>
+        <div className="grid gap-3">
+          <label className="grid gap-1">
+            <span className="text-sm font-bold">Название</span>
+            <input className="glass-input h-12 px-3" value={entry.title} onChange={(event) => onChange({ title: event.target.value })} />
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1">
+              <span className="text-sm font-bold">Тип</span>
+              <select className="glass-input h-12 px-3" value={entry.kind} onChange={(event) => onChange({ kind: event.target.value as EntryKind })}>
+                <option value="task">Задача</option>
+                <option value="purchase">Покупка</option>
+                <option value="idea">Идея</option>
+                <option value="note">Заметка</option>
+                <option value="inbox">Разобрать</option>
+              </select>
+            </label>
+            <label className="grid gap-1">
+              <span className="text-sm font-bold">Кому</span>
+              <select className="glass-input h-12 px-3" value={entry.assignedTo ?? "me"} onChange={(event) => onChange({ assignedTo: event.target.value as AssignedTo, visibility: event.target.value === "shared" ? "shared" : "private" })}>
+                <option value="me">Моё</option>
+                <option value="partner">Партнёр</option>
+                <option value="shared">Общее</option>
+              </select>
+            </label>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1">
+              <span className="text-sm font-bold">Область</span>
+              <input className="glass-input h-12 px-3" value={entry.area ?? ""} onChange={(event) => onChange({ area: event.target.value || undefined })} />
+            </label>
+            <label className="grid gap-1">
+              <span className="text-sm font-bold">Проект</span>
+              <input className="glass-input h-12 px-3" value={entry.project ?? ""} onChange={(event) => onChange({ project: event.target.value || undefined, projectPath: [entry.area, event.target.value].filter(Boolean) as string[] })} />
+            </label>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-4">
+            <label className="grid gap-1">
+              <span className="text-sm font-bold">Дата</span>
+              <input className="glass-input h-12 px-3" type="date" value={entry.dueDate ?? ""} onChange={(event) => onChange({ dueDate: event.target.value || undefined, schedule: event.target.value ? "today" : "none" })} />
+            </label>
+            <label className="grid gap-1">
+              <span className="text-sm font-bold">Время</span>
+              <input className="glass-input h-12 px-3" type="time" value={entry.time ?? ""} onChange={(event) => onChange({ time: event.target.value || undefined })} />
+            </label>
+            <label className="grid gap-1">
+              <span className="text-sm font-bold">Повтор</span>
+              <select className="glass-input h-12 px-3" value={entry.repeat ?? "none"} onChange={(event) => onChange({ repeat: event.target.value as RepeatRule })}>
+                <option value="none">Нет</option>
+                <option value="daily">Каждый день</option>
+                <option value="weekly">Каждую неделю</option>
+                <option value="weekly_monday">По понедельникам</option>
+                <option value="monthly">Каждый месяц</option>
+                <option value="monthly_first">Первого числа</option>
+              </select>
+            </label>
+            <label className="grid gap-1">
+              <span className="text-sm font-bold">Приоритет</span>
+              <select className="glass-input h-12 px-3" value={entry.priority} onChange={(event) => onChange({ priority: event.target.value as DiaryEntry["priority"] })}>
+                <option value="low">Низкий</option>
+                <option value="normal">Обычный</option>
+                <option value="high">Важный</option>
+              </select>
+            </label>
+          </div>
+          {entry.kind === "purchase" ? (
+            <div className="grid gap-3 rounded-2xl bg-white/35 p-3 dark:bg-white/5">
+              <GlassSegmentedControl
+                options={[
+                  { label: "Нужно", value: "planned" },
+                  { label: "Выбрано", value: "selected" },
+                  { label: "Заказано", value: "ordered" },
+                  { label: "Куплено", value: "purchased" }
+                ]}
+                value={purchaseStatus}
+                onChange={(value) => onChange({ purchase: { ...entry.purchase, status: value as PurchaseStatus }, status: purchaseStatusToEntryStatus(value as PurchaseStatus) })}
+              />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="grid gap-1">
+                  <span className="text-sm font-bold">Количество</span>
+                  <input className="glass-input h-12 px-3" inputMode="decimal" value={entry.purchase?.quantity ?? entry.quantity ?? ""} onChange={(event) => onChange({ purchase: { status: purchaseStatus, ...entry.purchase, quantity: numberOrUndefined(event.target.value) }, quantity: numberOrUndefined(event.target.value) })} />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-sm font-bold">Цена</span>
+                  <input className="glass-input h-12 px-3" inputMode="decimal" value={entry.purchase?.unitPrice ?? entry.unitPrice ?? ""} onChange={(event) => onChange({ purchase: { status: purchaseStatus, ...entry.purchase, unitPrice: numberOrUndefined(event.target.value), plannedPrice: numberOrUndefined(event.target.value) }, unitPrice: numberOrUndefined(event.target.value) })} />
+                </label>
+                <label className="grid gap-1">
+                  <span className="text-sm font-bold">Ссылка</span>
+                  <input className="glass-input h-12 px-3" value={entry.url ?? ""} onChange={(event) => onChange({ url: event.target.value || undefined })} />
+                </label>
+              </div>
+            </div>
+          ) : null}
+          <label className="grid gap-1">
+            <span className="text-sm font-bold">Заметки</span>
+            <textarea className="glass-input min-h-24 px-3 py-3" value={entry.description ?? ""} onChange={(event) => onChange({ description: event.target.value })} />
+          </label>
+          <div className="grid gap-2">
+            <span className="text-sm font-bold">Чеклист</span>
+            {(entry.checklist ?? []).map((item) => (
+              <label className="flex min-h-11 items-center gap-3 rounded-2xl bg-white/35 px-3 dark:bg-white/5" key={item.id}>
+                <input
+                  checked={item.done}
+                  type="checkbox"
+                  onChange={(event) => onChange({ checklist: (entry.checklist ?? []).map((check) => check.id === item.id ? { ...check, done: event.target.checked } : check) })}
+                />
+                <span className={item.done ? "text-[var(--muted)] line-through" : ""}>{item.title}</span>
+              </label>
+            ))}
+            <div className="flex gap-2">
+              <input className="glass-input h-11 min-w-0 flex-1 px-3" value={checklistText} onChange={(event) => setChecklistText(event.target.value)} placeholder="Пункт чеклиста" />
+              <GlassButton
+                className="px-4 font-bold"
+                onClick={() => {
+                  const title = checklistText.trim();
+                  if (!title) return;
+                  onChange({ checklist: [...(entry.checklist ?? []), { id: crypto.randomUUID(), title, done: false, createdAt: new Date().toISOString() }] });
+                  setChecklistText("");
+                }}
+              >
+                <Plus size={17} />
+              </GlassButton>
+            </div>
+          </div>
+          <div className="flex flex-wrap justify-between gap-2 pt-2">
+            <GlassBadge>rev {entry.revision ?? 1}</GlassBadge>
+            <div className="flex gap-2">
+              <GlassButton className="px-4 font-bold text-[var(--rose)]" onClick={onDelete}>
+                <Trash2 size={16} />
+                Удалить
+              </GlassButton>
+              <GlassButton className="px-5 font-black text-white [background:linear-gradient(135deg,#176bff,#7b61ff)]" onClick={onClose}>
+                Готово
+              </GlassButton>
+            </div>
+          </div>
+        </div>
+      </GlassPanel>
+    </div>
+  );
+}
+
+function QuickInputSheet({ onClose, onText, onVoice }: { onClose: () => void; onText: () => void; onVoice: () => void }) {
   return (
     <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/20 px-4 pb-[calc(16px+env(safe-area-inset-bottom))] backdrop-blur-sm" onClick={onClose}>
       <GlassPanel className="w-full max-w-md p-4" onClick={(event) => event.stopPropagation()}>
@@ -1757,12 +2219,6 @@ function QuickInputSheet({ onClose, onManual, onText, onVoice }: { onClose: () =
             <Plus size={22} />
             Написать
           </GlassButton>
-          <div className="grid grid-cols-2 gap-2">
-            <GlassButton className="h-12 px-3 font-bold" onClick={() => onManual("task")}>Задача</GlassButton>
-            <GlassButton className="h-12 px-3 font-bold" onClick={() => onManual("purchase")}>Покупка</GlassButton>
-            <GlassButton className="h-12 px-3 font-bold" onClick={() => onManual("idea")}>Идея</GlassButton>
-            <GlassButton className="h-12 px-3 font-bold" onClick={() => onManual("note")}>Заметка</GlassButton>
-          </div>
           <GlassButton className="h-12 px-5 font-bold" onClick={onClose}>
             Отмена
           </GlassButton>
@@ -1844,6 +2300,43 @@ function matchesOwner(entry: DiaryEntry, filter: "me" | "shared" | "all"): boole
   if (filter === "all") return true;
   if (filter === "shared") return entry.assignedTo === "shared" || entry.visibility === "shared";
   return !entry.assignedTo || entry.assignedTo === "me";
+}
+
+function normalizePurchaseStatus(entry: DiaryEntry): PurchaseStatus {
+  if (entry.purchase?.status) return entry.purchase.status;
+  if (entry.status === "selected") return "selected";
+  if (entry.status === "ordered") return "ordered";
+  if (entry.status === "bought" || entry.status === "done") return "purchased";
+  if (entry.status === "researching") return "researching";
+  return "planned";
+}
+
+function purchaseStatusToEntryStatus(status: PurchaseStatus): EntryStatus {
+  if (status === "selected") return "selected";
+  if (status === "ordered") return "ordered";
+  if (status === "purchased") return "bought";
+  if (status === "researching") return "researching";
+  if (status === "cancelled") return "cancelled";
+  return "want_to_buy";
+}
+
+function getWeekDays(dateIso: string): string[] {
+  const selected = new Date(`${dateIso}T00:00:00`);
+  const day = selected.getDay() || 7;
+  selected.setDate(selected.getDate() - day + 1);
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(selected);
+    date.setDate(selected.getDate() + index);
+    return date.toISOString().slice(0, 10);
+  });
+}
+
+function shortWeekday(dateIso: string): string {
+  return new Date(`${dateIso}T00:00:00`).toLocaleDateString("ru-RU", { weekday: "short" }).replace(".", "");
+}
+
+function formatPlanDate(dateIso: string): string {
+  return new Date(`${dateIso}T00:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "long", weekday: "long" });
 }
 
 function textMatches(value: string, needle: string): boolean {

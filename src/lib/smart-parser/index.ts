@@ -8,6 +8,7 @@ import { parsePrice } from "@/lib/smart-parser/price-parser";
 import { matchProject } from "@/lib/smart-parser/project-matcher";
 import { parsePriority } from "@/lib/smart-parser/priority-parser";
 import { parseQuantity } from "@/lib/smart-parser/quantity-parser";
+import { parseRepeat, parseTime } from "@/lib/smart-parser/repeat-parser";
 import { parseStatus } from "@/lib/smart-parser/status-parser";
 import { splitIntoSegments } from "@/lib/smart-parser/tokenizer";
 import { parseUrl } from "@/lib/smart-parser/url-parser";
@@ -37,6 +38,8 @@ function parseSegment(segment: string, originalInput: string, context: ParserCon
   const knowledge = context.knowledge ?? defaultKnowledge;
   const domain = detectDomain(segment, knowledge);
   const date = parseDate(segment, context.now);
+  const repeat = parseRepeat(segment);
+  const time = parseTime(segment);
   const project = matchProject(segment, context.projects, context.learnedRules);
   const inheritedProject = context.recentContext?.project && isRecentContext(context) ? [context.recentContext.area ?? domain.area, context.recentContext.project] : [];
   const projectPath = project.projectPath.length ? project.projectPath : inheritedProjectPath.length ? inheritedProjectPath : inheritedProject;
@@ -79,6 +82,8 @@ function parseSegment(segment: string, originalInput: string, context: ParserCon
     priority: priority.priority,
     schedule: date.schedule,
     dueDate: date.dueDate,
+    time: time.time,
+    repeat: repeat.repeat,
     quantity: quantity.quantity,
     purchase:
       kind === "purchase"
