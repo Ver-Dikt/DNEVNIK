@@ -48,7 +48,7 @@ function parseSegment(segment: string, originalInput: string, context: ParserCon
   const priority = parsePriority(segment);
   const status = parseStatus(segment, kind);
   const quantity = parseQuantity(segment);
-  const price = parsePrice(segment, kind === "purchase");
+  const price = parsePrice(segment, kind === "purchase" || kind === "wish");
   const url = parseUrl(segment);
   const assignedTo = detectAssignee(`${originalInput} ${segment}`, area, kind, settings.defaultHomePurchaseAssignee, settings.defaultPersonalAssignee);
   const existingProjectNames = context.projects?.map((item) => item.name) ?? [];
@@ -97,6 +97,16 @@ function parseSegment(segment: string, originalInput: string, context: ParserCon
             status: "planned",
             priceHistory: [],
             ...(extractPurchaseNotes(segment) ? {} : {})
+          }
+        : undefined,
+    wish:
+      kind === "wish"
+        ? {
+            estimatedPrice: priceTotal,
+            currency: price.currency ?? "RUB",
+            url: url.url,
+            priority: priority.priority,
+            status: "saved"
           }
         : undefined,
     unitPrice: price.unitPrice,

@@ -20,7 +20,8 @@ export function parsePrice(text: string, purchaseContext: boolean): PriceParseRe
     };
   }
 
-  const explicit = text.match(/(?:за\s+)?(\$|€)?\s*(\d+(?:[.,]\d+)?)\s*(к|k|тысяч[аи]?|тыс\.?)?\s*(руб(?:лей|ля|ль)?|₽|р(?=\s|$)|rub|доллар(?:ов|а)?|бакс(?:ов|а)?|usd|евро|eur|€|крон|nok)?/i);
+  const afterFor = text.match(/(?:^|\s)за\s+(\$|€)?\s*(\d+(?:[.,]\d+)?)\s*(к|k|тысяч[аи]?|тыс\.?)?\s*(руб(?:лей|ля|ль)?|₽|р(?=\s|$)|rub|доллар(?:ов|а)?|бакс(?:ов|а)?|usd|евро|eur|€|крон|nok)?/i);
+  const explicit = afterFor ?? text.match(/(?:за\s+)?(\$|€)?\s*(\d+(?:[.,]\d+)?)\s*(к|k|тысяч[аи]?|тыс\.?)?\s*(руб(?:лей|ля|ль)?|₽|р(?=\s|$)|rub|доллар(?:ов|а)?|бакс(?:ов|а)?|usd|евро|eur|€|крон|nok)?/i);
   if (!explicit) return { confidence: 0 };
 
   const hasCurrency = Boolean(explicit[1] || explicit[4]);

@@ -56,6 +56,18 @@ export const numberWords: Record<string, number> = {
 };
 
 export const intentPhrases: Record<SmartIntent, string[]> = {
+  wish: [
+    "хочу потом",
+    "хочу себе потом",
+    "в хотелки",
+    "в наши хотелки",
+    "сохрани в хотелки",
+    "сохранить в хотелки",
+    "давай сохраним",
+    "может потом купим",
+    "хочу вот",
+    "хотелка"
+  ],
   purchase: [
     "купить",
     "заказать",
@@ -66,7 +78,6 @@ export const intentPhrases: Record<SmartIntent, string[]> = {
     "нужна",
     "нужны",
     "понадобится",
-    "хочу купить",
     "посмотреть где купить",
     "найти",
     "присмотреть",
@@ -123,6 +134,7 @@ export const intentPhrases: Record<SmartIntent, string[]> = {
 export const intentToKind: Partial<Record<SmartIntent, EntryKind>> = {
   task: "task",
   purchase: "purchase",
+  wish: "wish",
   idea: "idea",
   reminder: "task",
   waiting: "task",

@@ -1,6 +1,6 @@
-import type { AppSettings, Area, AssignedTo, DomainId, EntryKind, EntryStatus, KnowledgeStore, Priority, ProjectNode, PurchaseDetails, RecentContext, RepeatRule, SchedulePreset, Visibility } from "@/lib/types";
+import type { AppSettings, Area, AssignedTo, DomainId, EntryKind, EntryStatus, KnowledgeStore, Priority, ProjectNode, PurchaseDetails, RecentContext, RepeatRule, SchedulePreset, Visibility, WishDetails } from "@/lib/types";
 
-export type SmartIntent = EntryKind | "note" | "link" | "reminder" | "waiting" | "project_related" | "unknown";
+export type SmartIntent = EntryKind | "wish" | "note" | "link" | "reminder" | "waiting" | "project_related" | "unknown";
 
 export interface ParserConfig {
   highConfidence: number;
@@ -91,6 +91,7 @@ export interface SmartParsedItem {
   currency?: string;
   url?: string;
   purchase?: PurchaseDetails;
+  wish?: WishDetails;
   notes?: string;
   needsReview?: boolean;
   sourceText: string;

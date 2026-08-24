@@ -10,6 +10,7 @@ import type {
   Member,
   PreviewState,
   ProjectNode,
+  Space,
   SavingsGoal
 } from "@/lib/types";
 
@@ -61,6 +62,7 @@ const draftKey = "dnevnik.draft";
 const previewKey = "dnevnik.preview";
 const financeKey = "dnevnik.finance";
 const savingsKey = "dnevnik.savings";
+const spacesKey = "dnevnik.spaces";
 const storageVersionKey = "dnevnik.storageVersion";
 const backupV2Key = "dnevnik.backup.v2";
 const backupV3Key = "dnevnik.backup.v3-pre-migration";
@@ -78,6 +80,16 @@ export const defaultAreas: Area[] = ["Дом", "Музыка", "Работа", "
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
   revision: 1
+}));
+
+export const defaultSpaces: Space[] = defaultAreas.map((area) => ({
+  id: area.id,
+  name: area.name,
+  icon: area.name === "Дом" ? "home" : area.name === "Музыка" ? "music" : area.name === "Студия" ? "sliders" : undefined,
+  accent: area.name === "Дом" ? "#0f8f72" : area.name === "Музыка" ? "#5b5bd6" : area.name === "Студия" ? "#c2762f" : "#607085",
+  createdAt: area.createdAt,
+  updatedAt: area.updatedAt,
+  revision: area.revision
 }));
 
 export const defaultKnowledge: KnowledgeStore = {
@@ -162,6 +174,16 @@ export function loadAreas(): Area[] {
   return readJson<Area[]>(areasKey, defaultAreas);
 }
 
+export function loadSpaces(): Space[] {
+  migrateStorage();
+  return readJson<Space[]>(spacesKey, defaultSpaces);
+}
+
+export function saveSpaces(spaces: Space[]): void {
+  localStorage.setItem(spacesKey, JSON.stringify(spaces));
+  localStorage.setItem(areasKey, JSON.stringify(spaces.map(spaceToArea)));
+}
+
 export function saveAreas(areas: Area[]): void {
   localStorage.setItem(areasKey, JSON.stringify(areas));
 }
@@ -243,6 +265,7 @@ export function exportDnevnikData() {
     knowledge: loadKnowledge(),
     finance: loadFinanceTransactions(),
     savings: loadSavingsGoals(),
+    spaces: loadSpaces(),
     settings: loadSettings()
   };
 }
@@ -254,6 +277,7 @@ export function importDnevnikData(data: unknown): boolean {
   localStorage.setItem(entriesKey, JSON.stringify(next.entries.map(normalizeEntry)));
   localStorage.setItem(projectsKey, JSON.stringify(Array.isArray(next.projects) ? next.projects : []));
   localStorage.setItem(areasKey, JSON.stringify(Array.isArray(next.areas) ? next.areas : defaultAreas));
+  localStorage.setItem(spacesKey, JSON.stringify(Array.isArray((next as { spaces?: Space[] }).spaces) ? (next as { spaces?: Space[] }).spaces : defaultSpaces));
   localStorage.setItem(membersKey, JSON.stringify(Array.isArray(next.members) ? next.members : defaultMembers));
   localStorage.setItem(knowledgeKey, JSON.stringify(next.knowledge ?? defaultKnowledge));
   localStorage.setItem(financeKey, JSON.stringify(Array.isArray(next.finance) ? next.finance : []));
@@ -272,6 +296,7 @@ export function clearAllDnevnikStorage(options: { learnedRules?: boolean } = {})
   localStorage.setItem(entriesKey, JSON.stringify([]));
   localStorage.setItem(projectsKey, JSON.stringify([]));
   localStorage.setItem(areasKey, JSON.stringify(defaultAreas));
+  localStorage.setItem(spacesKey, JSON.stringify(defaultSpaces));
   localStorage.setItem(membersKey, JSON.stringify(defaultMembers));
   localStorage.setItem(knowledgeKey, JSON.stringify(defaultKnowledge));
   localStorage.setItem(financeKey, JSON.stringify([]));
@@ -307,6 +332,7 @@ function migrateStorage(): void {
     version: version ?? "1",
     entries: readJson<DiaryEntry[]>(entriesKey, []),
     projects: readJson<ProjectNode[]>(projectsKey, []),
+    spaces: readJson<Space[]>(spacesKey, []),
     settings: readJson<Partial<AppSettings>>(settingsKey, {})
   };
   if (!localStorage.getItem(backupV2Key)) localStorage.setItem(backupV2Key, JSON.stringify({ ...previous, backedUpAt: new Date().toISOString() }));
@@ -331,6 +357,7 @@ function migrateStorage(): void {
   localStorage.setItem(entriesKey, JSON.stringify(migratedEntries));
   localStorage.setItem(projectsKey, JSON.stringify([...projectMap.values(), ...previous.projects]));
   localStorage.setItem(areasKey, JSON.stringify(defaultAreas));
+  localStorage.setItem(spacesKey, JSON.stringify(previous.spaces.length ? previous.spaces : defaultSpaces));
   localStorage.setItem(membersKey, JSON.stringify(defaultMembers));
   localStorage.setItem(knowledgeKey, JSON.stringify(defaultKnowledge));
   localStorage.setItem(financeKey, JSON.stringify(readJson<FinanceTransaction[]>(financeKey, [])));
@@ -361,6 +388,18 @@ function normalizeEntry(entry: DiaryEntry): DiaryEntry {
           priceHistory: entry.purchase?.priceHistory ?? []
         }
       : entry.purchase;
+  const wish =
+    entry.kind === "wish"
+      ? {
+          status: entry.wish?.status ?? "saved",
+          estimatedPrice: entry.wish?.estimatedPrice ?? entry.totalPrice ?? entry.unitPrice,
+          currency: entry.wish?.currency ?? entry.currency ?? "RUB",
+          url: entry.wish?.url ?? entry.url,
+          imageUrl: entry.wish?.imageUrl,
+          store: entry.wish?.store ?? entry.store,
+          priority: entry.wish?.priority ?? entry.priority
+        }
+      : entry.wish;
 
   return {
     ...entry,
@@ -373,11 +412,32 @@ function normalizeEntry(entry: DiaryEntry): DiaryEntry {
     createdBy: entry.createdBy ?? "me",
     updatedBy: entry.updatedBy ?? "me",
     purchase,
+    wish,
+    attachments: entry.attachments ?? (entry.url ? [{ id: `link-${entry.id}`, type: "link", remoteUrl: entry.url, name: domainFromUrl(entry.url), createdAt: entry.createdAt }] : []),
     repeat: entry.repeat ?? "none",
     checklist: entry.checklist ?? [],
     needsReview: Boolean(entry.needsReview),
     revision: entry.revision ?? 1
   };
+}
+
+function spaceToArea(space: Space): Area {
+  return {
+    id: space.id,
+    name: space.name,
+    icon: space.icon,
+    createdAt: space.createdAt,
+    updatedAt: space.updatedAt,
+    revision: space.revision ?? 1
+  };
+}
+
+function domainFromUrl(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
 
 function inferArea(entry: DiaryEntry): string {

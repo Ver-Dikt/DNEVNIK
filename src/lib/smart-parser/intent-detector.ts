@@ -11,6 +11,10 @@ export function detectIntent(text: string, learnedRules: LearnedRule[] = []): In
 
   let best: IntentResult = { intent: "unknown", confidence: 0.18 };
 
+  if (/(хочу|хотим|давай\s+сохраним|сохрани).{0,40}(потом|хотелк|может|когда-нибудь)|\bв\s+(?:мои|наши)?\s*хотелки\b/i.test(text)) {
+    best = { intent: "wish", confidence: 0.94, matchedText: "wishlist phrase" };
+  }
+
   for (const [intent, phrases] of Object.entries(intentPhrases) as Array<[SmartIntent, string[]]>) {
     for (const phrase of phrases) {
       if (!phrase) continue;

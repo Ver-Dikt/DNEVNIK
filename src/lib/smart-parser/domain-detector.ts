@@ -33,7 +33,7 @@ export function detectDomain(text: string, knowledge: KnowledgeStore = defaultKn
 
 export function detectAssignee(text: string, area: string, kind: string, defaultHomePurchaseAssignee: AssignedTo = "shared", defaultPersonalAssignee: AssignedTo = "me"): AssignedTo {
   const normalized = text.toLowerCase();
-  if (/(^|\s)(нам|общее|вместе|домой)(?=\s|$)/i.test(normalized)) return "shared";
+  if (/(^|\s)(нам|общее|вместе|домой|наши|наше|наш)(?=\s|$)/i.test(normalized)) return "shared";
   if (/(^|\s)(мне|себе|мой|моя)(?=\s|$)/i.test(normalized)) return "me";
   if (/(^|\s)(ей|для нее|для неё)(?=\s|$)/i.test(normalized)) return "partner";
   if (kind === "purchase" && area === "Дом") return defaultHomePurchaseAssignee;
@@ -41,6 +41,11 @@ export function detectAssignee(text: string, area: string, kind: string, default
 }
 
 export function detectProjectCandidate(text: string, area: string, existingProjects: string[]): string | undefined {
+  const contextual = text.match(/(?:^|\s)по\s+([a-zа-я0-9-]+(?:\s+[a-zа-я0-9-]+){0,2})/i);
+  if (contextual) {
+    const candidate = contextual[1].replace(/\s+(надо|нужно|проверить|сделать|купить).*$/i, "").trim();
+    if (candidate && !["работе", "дому", "проекту", "музыке"].includes(candidate.toLowerCase()) && !existingProjects.some((project) => project.toLowerCase() === candidate.toLowerCase())) return candidate;
+  }
   const candidates = Array.from(text.matchAll(/\b([A-ZА-Я][A-Za-zА-Яа-я0-9-]{2,})\b/g)).map((match) => match[1]);
   for (const candidate of candidates) {
     const lower = candidate.toLowerCase();

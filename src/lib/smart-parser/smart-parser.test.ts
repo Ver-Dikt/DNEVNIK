@@ -304,4 +304,37 @@ describe("parseSmartInput", () => {
     expect(result.items[0]?.kind).toBe("idea");
     expect(result.items[0]?.area).toBe("Студия");
   });
+
+  it("parses personal wish as wishlist, not purchase", () => {
+    const result = parseSmartInput("Хочу себе потом iPhone 17 Pro на 256 за 90000", familyCtx);
+    expect(result.items[0]?.kind).toBe("wish");
+    expect(result.items[0]?.assignedTo).toBe("me");
+    expect(result.items[0]?.wish?.status).toBe("saved");
+    expect(result.items[0]?.wish?.estimatedPrice).toBe(90000);
+  });
+
+  it("parses shared wishlist phrase", () => {
+    const result = parseSmartInput("Давай сохраним этот телевизор в наши хотелки", familyCtx);
+    expect(result.items[0]?.kind).toBe("wish");
+    expect(result.items[0]?.assignedTo).toBe("shared");
+  });
+
+  it("stores url on wish", () => {
+    const result = parseSmartInput("Сохрани в хотелки https://example.com/item", familyCtx);
+    expect(result.items[0]?.kind).toBe("wish");
+    expect(result.items[0]?.url).toBe("https://example.com/item");
+  });
+
+  it("does not force generic work for named bar context", () => {
+    const result = parseSmartInput("Завтра по ХХ Бару проверить микшер", familyCtx);
+    expect(result.items[0]?.kind).toBe("task");
+    expect(result.items[0]?.schedule).toBe("tomorrow");
+    expect(result.items[0]?.projectCandidate).toBe("ХХ Бару");
+  });
+
+  it("keeps unscheduled studio task visible without date", () => {
+    const result = parseSmartInput("Поменять стол в студии", familyCtx);
+    expect(result.items[0]?.schedule).toBe("none");
+    expect(result.items[0]?.area).toBe("Студия");
+  });
 });

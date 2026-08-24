@@ -1,4 +1,4 @@
-export type EntryKind = "task" | "purchase" | "idea" | "note" | "inbox";
+export type EntryKind = "task" | "purchase" | "wish" | "idea" | "note" | "inbox";
 export type ParsedBy = "local" | "ai" | "manual";
 export type EntryStatus =
   | "active"
@@ -22,8 +22,20 @@ export type SchedulePreset =
 export type AssignedTo = "me" | "partner" | "shared";
 export type Visibility = "private" | "shared";
 export type PurchaseStatus = "planned" | "researching" | "selected" | "ordered" | "purchased" | "cancelled";
+export type WishStatus = "saved" | "considering" | "planned" | "purchased" | "dismissed";
 export type DomainId = "music" | "home" | "work" | "studio_equipment" | "general";
 export type RepeatRule = "none" | "daily" | "weekly" | "monthly" | "weekly_monday" | "monthly_first";
+
+export interface Space {
+  id: string;
+  name: string;
+  icon?: string;
+  accent?: string;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string;
+  revision?: number;
+}
 
 export interface Member {
   id: "me" | "partner";
@@ -40,6 +52,20 @@ export interface Area {
   createdAt: string;
   updatedAt: string;
   revision: number;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  spaceId?: string;
+  status: "active" | "completed" | "archived";
+  icon?: string;
+  accent?: string;
+  targetDate?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  revision?: number;
 }
 
 export interface PurchaseDetails {
@@ -62,13 +88,34 @@ export interface PurchaseDetails {
   }>;
 }
 
+export interface WishDetails {
+  estimatedPrice?: number;
+  currency?: string;
+  url?: string;
+  imageUrl?: string;
+  store?: string;
+  priority?: Priority;
+  status: WishStatus;
+}
+
+export interface Attachment {
+  id: string;
+  type: "image" | "link";
+  localUrl?: string;
+  remoteUrl?: string;
+  name?: string;
+  createdAt?: string;
+}
+
 export interface DiaryEntry {
   id: string;
   kind: EntryKind;
   title: string;
   description?: string;
   area?: string;
+  spaceId?: string;
   project?: string;
+  projectId?: string;
   projectPath: string[];
   assignedTo?: AssignedTo;
   visibility?: Visibility;
@@ -96,6 +143,8 @@ export interface DiaryEntry {
   store?: string;
   url?: string;
   purchase?: PurchaseDetails;
+  wish?: WishDetails;
+  attachments?: Attachment[];
   notes?: string;
   needsReview?: boolean;
   sourceText?: string;
@@ -119,6 +168,8 @@ export interface ProjectNode {
   id: string;
   name: string;
   area?: string;
+  spaceId?: string;
+  status?: "active" | "completed" | "archived";
   parentId?: string;
   aliases?: string[];
   createdAt: string;
@@ -142,6 +193,7 @@ export interface AppSettings {
   recentContextMinutes: number;
   monthlyBudget?: number;
   appearance: "system" | "light" | "dark";
+  planMode?: "day" | "week" | "month";
 }
 
 export interface KnowledgeStore {
@@ -151,6 +203,8 @@ export interface KnowledgeStore {
   projectAliases: Record<string, string[]>;
   phraseMappings: Record<string, { area?: string; project?: string; intent?: EntryKind }>;
   corrections: Array<{ id: string; phrase: string; patch: Partial<DiaryEntry>; createdAt: string }>;
+  phraseRules?: Array<{ id: string; phrase: string; patch: Partial<DiaryEntry>; createdAt: string }>;
+  entityMappings?: Array<{ id: string; text: string; spaceId?: string; projectId?: string; createdAt: string }>;
 }
 
 export interface SavingsGoal {
