@@ -159,7 +159,12 @@ function SettingsView({ members, onChangeSettings, onClearAll, onClearEntries, o
           <Button onClick={onExport}>Экспорт JSON</Button>
           <label className="button button-plain">
             Импорт JSON
-            <input className="hidden" type="file" accept="application/json" onChange={(event) => event.target.files?.[0] ? onImport(event.target.files[0]) : undefined} />
+            <input className="hidden" type="file" accept="application/json" onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (!file) return;
+              onImport(file);
+              event.target.value = "";
+            }} />
           </label>
           <Button onClick={onClearEntries}>Очистить записи</Button>
           <Button onClick={onClearAll} variant="danger">Очистить всё</Button>

@@ -108,6 +108,13 @@ export function DnevnikApp() {
   }, [toast]);
 
   useEffect(() => {
+    document.documentElement.dataset.theme = data.settings.appearance;
+    return () => {
+      delete document.documentElement.dataset.theme;
+    };
+  }, [data.settings.appearance]);
+
+  useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
     navigator.serviceWorker.register(`${appBasePath}/sw.js`, { scope: `${appBasePath || "/"}` }).then((registration) => {
       registration.addEventListener("updatefound", () => {
@@ -132,6 +139,13 @@ export function DnevnikApp() {
     setScreen(next);
     setMoreSection(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function closeCapture() {
+    keepListeningRef.current = false;
+    recognitionRef.current?.stop();
+    setIsListening(false);
+    setCaptureOpen(false);
   }
 
   function addEntries(entries: DiaryEntry[]) {
@@ -225,7 +239,8 @@ export function DnevnikApp() {
     addEntries(saved);
     setPreview(null);
     setQuickText("");
-    setCaptureOpen(false);
+    setEditingPreviewIndex(null);
+    closeCapture();
     setToast({ title: saved.length === 1 ? "Сохранено" : `Сохранено: ${saved.length}`, detail: saved[0]?.title, actionLabel: "Открыть", action: () => setDetailId(saved[0]?.id ?? null) });
   }
 
@@ -275,7 +290,11 @@ export function DnevnikApp() {
       voiceBaseRef.current = latestTextRef.current.trim();
       window.setTimeout(() => keepListeningRef.current ? startRecognition(Recognition) : undefined, 250);
     };
-    recognition.onerror = () => {
+    recognition.onerror = (event) => {
+      if (keepListeningRef.current && (event.error === "no-speech" || event.error === "aborted")) {
+        setVoiceMessage("Слушаю. Можно продолжать после паузы.");
+        return;
+      }
       keepListeningRef.current = false;
       setIsListening(false);
       setVoiceMessage("Не удалось распознать речь. Текстовый ввод работает.");
@@ -295,7 +314,15 @@ export function DnevnikApp() {
 
   function completeEntry(entry: DiaryEntry) {
     const status = entry.kind === "purchase" ? "bought" : "done";
-    data.setEntries((current) => current.map((item) => item.id === entry.id ? { ...item, status, completedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), revision: (item.revision ?? 1) + 1 } : item));
+    data.setEntries((current) => current.map((item) => item.id === entry.id ? {
+      ...item,
+      status,
+      purchase: item.purchase ? { ...item.purchase, status: "purchased" } : item.purchase,
+      wish: item.wish ? { ...item.wish, status: "purchased" } : item.wish,
+      completedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      revision: (item.revision ?? 1) + 1
+    } : item));
   }
 
   function updateEntry(id: string, patch: Partial<DiaryEntry>) {
@@ -397,7 +424,7 @@ export function DnevnikApp() {
       </div>
 
       <MobileNav active={screen} onAdd={() => setCaptureOpen(true)} onChange={navigate} />
-      {captureOpen ? <CaptureSheet text={quickText} isListening={isListening} isParsing={isParsing} preview={preview} voiceMessage={voiceMessage} onClose={() => setCaptureOpen(false)} onTextChange={setQuickText} onToggleVoice={toggleVoice} onParse={parseText} onSaveAll={() => savePreview()} onEditPreview={setEditingPreviewIndex} onRemovePreview={removePreviewItem} /> : null}
+      {captureOpen ? <CaptureSheet text={quickText} isListening={isListening} isParsing={isParsing} preview={preview} voiceMessage={voiceMessage} onClose={closeCapture} onTextChange={setQuickText} onToggleVoice={toggleVoice} onParse={parseText} onSaveAll={() => savePreview()} onEditPreview={setEditingPreviewIndex} onRemovePreview={removePreviewItem} /> : null}
       {editingPreviewIndex !== null && preview?.items[editingPreviewIndex] ? (
         <EntryDetailSheet
           entry={normalizeSavedEntry(createEntryFromParsed(preview.items[editingPreviewIndex]), data.spaces, data.projects)}
@@ -407,7 +434,10 @@ export function DnevnikApp() {
           onCreateProject={createProject}
           onCreateSpace={createSpace}
           onClose={() => setEditingPreviewIndex(null)}
-          onDelete={() => removePreviewItem(editingPreviewIndex)}
+          onDelete={() => {
+            removePreviewItem(editingPreviewIndex);
+            setEditingPreviewIndex(null);
+          }}
           onRemember={() => undefined}
         />
       ) : null}

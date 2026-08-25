@@ -164,11 +164,20 @@ export function useDnevnikData() {
     setMembersState(Array.isArray(next.members) ? next.members : defaultMembers);
     setKnowledgeState(next.knowledge ?? defaultKnowledge);
     setSettingsState(next.settings ?? defaultSettings);
+    setDraftState(next.draft ?? null);
+    setPreviewStateLocal(next.preview ?? null);
     setFinanceState(Array.isArray(next.financeTransactions) ? next.financeTransactions : []);
     setSavingsState(Array.isArray(next.savingsGoals) ? next.savingsGoals : []);
     void saveEntriesDb(Array.isArray(next.entries) ? next.entries : []);
     void saveSpacesDb(Array.isArray(next.spaces) ? next.spaces : defaultSpaces);
     void saveProjectsDb(Array.isArray(next.projects) ? next.projects : []);
+    void saveMembersDb(Array.isArray(next.members) ? next.members : defaultMembers);
+    void saveKnowledgeDb(next.knowledge ?? defaultKnowledge);
+    void saveSettingsDb(next.settings ?? defaultSettings);
+    void saveDraftDb(next.draft ?? null);
+    void savePreviewDb(next.preview ?? null);
+    void saveFinanceDb(Array.isArray(next.financeTransactions) ? next.financeTransactions : []);
+    void saveSavingsDb(Array.isArray(next.savingsGoals) ? next.savingsGoals : []);
     return true;
   }, []);
 

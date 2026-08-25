@@ -34,7 +34,7 @@ export function CaptureSheet({
 }) {
   return (
     <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/30 px-3 pb-[calc(10px+env(safe-area-inset-bottom))] backdrop-blur-sm" onClick={onClose}>
-      <Surface className="max-h-[92vh] w-full max-w-xl overflow-auto p-4" onClick={(event) => event.stopPropagation()}>
+      <Surface className="max-h-[calc(100dvh_-_24px_-_env(safe-area-inset-bottom))] w-full max-w-xl overflow-auto p-4" onClick={(event) => event.stopPropagation()}>
         <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-black/15" />
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-2xl font-black">Добавить</h2>

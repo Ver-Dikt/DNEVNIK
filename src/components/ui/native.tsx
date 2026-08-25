@@ -32,7 +32,7 @@ export function Select({ className = "", ...props }: SelectHTMLAttributes<HTMLSe
 
 export function Segmented<T extends string>({ options, value, onChange }: { options: Array<{ label: string; value: T }>; value: T; onChange: (value: T) => void }) {
   return (
-    <div className="segmented">
+    <div className="segmented" role="tablist">
       {options.map((option) => (
         <button className={option.value === value ? "active" : ""} key={option.value} onClick={() => onChange(option.value)} type="button">
           {option.label}

@@ -33,7 +33,7 @@ export function PlanView({
   onOpen: (entry: DiaryEntry) => void;
   onAdd: () => void;
 }) {
-  const touchStart = useRef<number | null>(null);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
   const activeEntries = entries.filter((entry) => entry.status !== "cancelled" && entry.status !== "done" && matchesOwner(entry, ownerFilter));
   const weekDays = getWeekDays(selectedDate);
   const monthDays = getMonthGrid(selectedDate);
@@ -53,21 +53,28 @@ export function PlanView({
   const overdue = activeEntries.filter((entry) => isPast(entry.dueDate));
   const unscheduled = activeEntries.filter((entry) => !entry.dueDate && entry.schedule === "none");
   const someday = activeEntries.filter((entry) => entry.schedule === "someday");
+  const scheduledLater = activeEntries.filter((entry) => !entry.dueDate && entry.schedule !== "none" && entry.schedule !== "someday");
 
   function shift(direction: number) {
-    onDateChange(mode === "month" ? addMonths(selectedDate, direction) : addDays(selectedDate, direction * 7));
+    if (mode === "month") {
+      onDateChange(addMonths(selectedDate, direction));
+      return;
+    }
+    onDateChange(addDays(selectedDate, mode === "week" ? direction * 7 : direction));
   }
 
-  function handleTouchEnd(clientX: number) {
+  function handleTouchEnd(clientX: number, clientY: number) {
     if (touchStart.current === null) return;
-    const delta = clientX - touchStart.current;
+    const delta = clientX - touchStart.current.x;
+    const verticalDelta = clientY - touchStart.current.y;
     touchStart.current = null;
     if (Math.abs(delta) < 54) return;
+    if (Math.abs(verticalDelta) > Math.abs(delta) * 0.65) return;
     shift(delta > 0 ? -1 : 1);
   }
 
   return (
-    <div className="grid gap-4" onTouchStart={(event) => (touchStart.current = event.touches[0].clientX)} onTouchEnd={(event) => handleTouchEnd(event.changedTouches[0].clientX)}>
+    <div className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-bold text-[var(--muted)]">План</p>
@@ -84,7 +91,7 @@ export function PlanView({
         />
       </div>
 
-      <Surface className="grid gap-3 p-3">
+      <Surface className="grid gap-3 p-3" onTouchStart={(event) => (touchStart.current = { x: event.touches[0].clientX, y: event.touches[0].clientY })} onTouchEnd={(event) => handleTouchEnd(event.changedTouches[0].clientX, event.changedTouches[0].clientY)}>
         <div className="flex items-center justify-between gap-2">
           <Button aria-label="Назад" className="h-11 w-11 p-0" onClick={() => shift(-1)}><ChevronLeft size={20} /></Button>
           <Segmented
@@ -116,6 +123,7 @@ export function PlanView({
       <AgendaSection title="Без времени" entries={untimed} spaces={spaces} onComplete={onComplete} onOpen={onOpen} emptyAction={onAdd} />
       <AgendaSection title="Покупки на дату" entries={purchases} spaces={spaces} onComplete={onComplete} onOpen={onOpen} />
       <AgendaSection title="Просрочено" entries={overdue} spaces={spaces} onComplete={onComplete} onOpen={onOpen} />
+      <AgendaSection title="Со сроком без даты" entries={scheduledLater} spaces={spaces} onComplete={onComplete} onOpen={onOpen} />
       <AgendaSection title="Без даты" entries={unscheduled} spaces={spaces} onComplete={onComplete} onOpen={onOpen} />
       <AgendaSection title="Когда-нибудь" entries={someday} spaces={spaces} onComplete={onComplete} onOpen={onOpen} />
     </div>
