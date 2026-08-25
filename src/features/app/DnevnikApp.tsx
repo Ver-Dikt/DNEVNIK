@@ -68,31 +68,38 @@ export function DnevnikApp() {
   const keepListeningRef = useRef(false);
   const latestTextRef = useRef("");
   const voiceBaseRef = useRef("");
+  const restoredRef = useRef(false);
+  const recoveryAppliedRef = useRef(false);
+  const dbReady = data.status.ready;
+  const persistDraft = data.setDraft;
+  const persistPreviewState = data.setPreviewState;
 
   useEffect(() => {
     queueMicrotask(() => setLearnedRules(loadLearnedRules()));
   }, []);
 
   useEffect(() => {
-    if (!data.status.ready) return;
+    if (!dbReady || restoredRef.current) return;
+    restoredRef.current = true;
     queueMicrotask(() => {
       setQuickText(data.draft?.quickText ?? "");
       setPreview(data.previewState?.preview ?? null);
       setPlanMode(data.settings.planMode ?? "day");
       if (data.draft?.quickText || data.previewState?.preview) setCaptureOpen(true);
+      recoveryAppliedRef.current = true;
     });
-  }, [data.draft, data.previewState, data.settings.planMode, data.status.ready]);
+  }, [data.draft, data.previewState, data.settings.planMode, dbReady]);
 
   useEffect(() => {
     latestTextRef.current = quickText;
-    if (!data.status.ready) return;
-    data.setDraft(quickText.trim() ? { quickText, source: isListening ? "voice" : "typing", timestamp: new Date().toISOString() } : null);
-  }, [data, isListening, quickText]);
+    if (!dbReady || !recoveryAppliedRef.current) return;
+    persistDraft(quickText.trim() ? { quickText, source: isListening ? "voice" : "typing", timestamp: new Date().toISOString() } : null);
+  }, [dbReady, isListening, persistDraft, quickText]);
 
   useEffect(() => {
-    if (!data.status.ready) return;
-    data.setPreviewState(preview ? { preview, timestamp: new Date().toISOString() } : null);
-  }, [data, preview]);
+    if (!dbReady || !recoveryAppliedRef.current) return;
+    persistPreviewState(preview ? { preview, timestamp: new Date().toISOString() } : null);
+  }, [dbReady, persistPreviewState, preview]);
 
   useEffect(() => {
     if (!toast) return;
@@ -123,7 +130,7 @@ export function DnevnikApp() {
 
   function navigate(next: ScreenId) {
     setScreen(next);
-    if (next !== "more") setMoreSection(null);
+    setMoreSection(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 

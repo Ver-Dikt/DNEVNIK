@@ -10,7 +10,7 @@ const navItems: Array<{ id: ScreenId; label: string; icon: React.ComponentType<{
 
 export function MobileNav({ active, onAdd, onChange }: { active: ScreenId; onAdd: () => void; onChange: (screen: ScreenId) => void }) {
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-50 mx-auto mb-[calc(12px+env(safe-area-inset-bottom))] flex w-[min(94vw,430px)] items-center justify-between rounded-[28px] border border-black/5 bg-white/88 px-3 py-2 shadow-[0_20px_60px_rgba(24,35,52,.18)] backdrop-blur-xl md:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-50 mx-auto mb-[calc(12px+env(safe-area-inset-bottom))] flex w-[min(94vw,430px)] items-center justify-between rounded-[28px] border border-black/5 bg-white/[.88] px-3 py-2 shadow-[0_20px_60px_rgba(24,35,52,.18)] backdrop-blur-xl md:hidden">
       {navItems.slice(0, 2).map((item) => <NavButton active={active === item.id} item={item} key={item.id} onClick={() => onChange(item.id)} />)}
       <button aria-label="Добавить" className="grid h-14 w-14 min-w-14 place-items-center rounded-full bg-[#16191f] text-white shadow-xl" onClick={onAdd} type="button">
         <Plus size={25} />

@@ -1,4 +1,4 @@
-const CACHE_NAME = "dnevnik-v6-shared-life-foundation";
+const CACHE_NAME = "dnevnik-v7-mobile-stability";
 const APP_SHELL = ["./", "./manifest.json", "./icon.svg"];
 
 self.addEventListener("install", (event) => {

@@ -43,13 +43,13 @@ export function MoreView({
   onNavigate: (screen: ScreenId) => void;
   onOpenEntry: (entry: DiaryEntry) => void;
 }) {
-  if (activeSection === "wishlist") return <WishlistView entries={entries} spaces={spaces} onComplete={onComplete} onOpen={onOpenEntry} />;
-  if (activeSection === "ideas") return <EntryList title="Идеи" entries={entries.filter((entry) => entry.kind === "idea")} spaces={spaces} onComplete={onComplete} onOpenEntry={onOpenEntry} />;
-  if (activeSection === "review") return <EntryList title="Разобрать" entries={entries.filter((entry) => entry.needsReview || entry.kind === "inbox")} spaces={spaces} onComplete={onComplete} onOpenEntry={onOpenEntry} />;
-  if (activeSection === "archive") return <EntryList title="Архив" entries={entries.filter((entry) => entry.status === "done" || entry.status === "bought" || entry.status === "cancelled")} spaces={spaces} onComplete={onComplete} onOpenEntry={onOpenEntry} />;
-  if (activeSection === "money") return <MoneyView entries={entries} spaces={spaces} onOpenEntry={onOpenEntry} />;
-  if (activeSection === "search") return <SearchView entries={entries} query={query} spaces={spaces} onChangeQuery={onChangeQuery} onComplete={onComplete} onOpenEntry={onOpenEntry} />;
-  if (activeSection === "settings") return <SettingsView members={members} settings={settings} onChangeSettings={onChangeSettings} onClearAll={onClearAll} onClearEntries={onClearEntries} onExport={onExport} onImport={onImport} />;
+  if (activeSection === "wishlist") return <SectionShell onBack={() => onChangeSection(null)}><WishlistView entries={entries} spaces={spaces} onComplete={onComplete} onOpen={onOpenEntry} /></SectionShell>;
+  if (activeSection === "ideas") return <SectionShell onBack={() => onChangeSection(null)}><EntryList title="Идеи" entries={entries.filter((entry) => entry.kind === "idea")} spaces={spaces} onComplete={onComplete} onOpenEntry={onOpenEntry} /></SectionShell>;
+  if (activeSection === "review") return <SectionShell onBack={() => onChangeSection(null)}><EntryList title="Разобрать" entries={entries.filter((entry) => entry.needsReview || entry.kind === "inbox")} spaces={spaces} onComplete={onComplete} onOpenEntry={onOpenEntry} /></SectionShell>;
+  if (activeSection === "archive") return <SectionShell onBack={() => onChangeSection(null)}><EntryList title="Архив" entries={entries.filter((entry) => entry.status === "done" || entry.status === "bought" || entry.status === "cancelled")} spaces={spaces} onComplete={onComplete} onOpenEntry={onOpenEntry} /></SectionShell>;
+  if (activeSection === "money") return <SectionShell onBack={() => onChangeSection(null)}><MoneyView entries={entries} spaces={spaces} onOpenEntry={onOpenEntry} /></SectionShell>;
+  if (activeSection === "search") return <SectionShell onBack={() => onChangeSection(null)}><SearchView entries={entries} query={query} spaces={spaces} onChangeQuery={onChangeQuery} onComplete={onComplete} onOpenEntry={onOpenEntry} /></SectionShell>;
+  if (activeSection === "settings") return <SectionShell onBack={() => onChangeSection(null)}><SettingsView members={members} settings={settings} onChangeSettings={onChangeSettings} onClearAll={onClearAll} onClearEntries={onClearEntries} onExport={onExport} onImport={onImport} /></SectionShell>;
 
   const reviewCount = entries.filter((entry) => entry.needsReview || entry.kind === "inbox").length;
   return (
@@ -68,6 +68,15 @@ export function MoreView({
         <MoreButton title="Настройки" detail="Совместное, ввод, данные" icon={<Settings size={20} />} onClick={() => onChangeSection("settings")} />
       </div>
       <Button className="font-bold" onClick={() => onNavigate("plan")}>Вернуться в план</Button>
+    </div>
+  );
+}
+
+function SectionShell({ children, onBack }: { children: React.ReactNode; onBack: () => void }) {
+  return (
+    <div className="grid gap-4">
+      <Button className="w-fit px-4" onClick={onBack}>Назад</Button>
+      {children}
     </div>
   );
 }
