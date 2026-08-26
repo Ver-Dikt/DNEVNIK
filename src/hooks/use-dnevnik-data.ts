@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { exportIndexedDbData, loadDnevnikData, saveDraftDb, saveEntriesDb, saveFinanceDb, saveKnowledgeDb, saveMembersDb, savePreviewDb, saveProjectsDb, saveSavingsDb, saveSettingsDb, saveSpacesDb } from "@/db";
+import { exportIndexedDbData, loadDnevnikData, saveCalendarEventsDb, saveDocumentsDb, saveDraftDb, saveEntriesDb, saveFinanceDb, saveImportantDatesDb, saveKnowledgeDb, saveLoyaltyCardsDb, saveMembersDb, savePlanTransactionsDb, savePreviewDb, saveProjectsDb, saveSavingsDb, saveSettingsDb, saveSharedPlansDb, saveSpacesDb } from "@/db";
 import type { DbStatus } from "@/db/schema";
-import { clearAllDnevnikStorage, clearEntriesStorage, defaultKnowledge, defaultMembers, defaultSettings, defaultSpaces, importDnevnikData, saveDraft, saveEntries, saveFinanceTransactions, saveKnowledge, saveMembers, savePreviewState, saveProjects, saveSavingsGoals, saveSettings, saveSpaces } from "@/lib/storage";
-import type { AppSettings, DiaryEntry, DraftState, FinanceTransaction, KnowledgeStore, Member, PreviewState, ProjectNode, SavingsGoal, Space } from "@/lib/types";
+import { clearAllDnevnikStorage, clearEntriesStorage, defaultKnowledge, defaultMembers, defaultSettings, defaultSpaces, importDnevnikData, saveCalendarEvents, saveDocuments, saveDraft, saveEntries, saveFinanceTransactions, saveImportantDates, saveKnowledge, saveLoyaltyCards, saveMembers, savePlanTransactions, savePreviewState, saveProjects, saveSavingsGoals, saveSettings, saveSharedPlans, saveSpaces } from "@/lib/storage";
+import type { AppSettings, CalendarEvent, DiaryEntry, DocumentItem, DraftState, FinanceTransaction, ImportantDate, KnowledgeStore, LoyaltyCard, Member, PlanTransaction, PreviewState, ProjectNode, SavingsGoal, SharedPlan, Space } from "@/lib/types";
 
 export function useDnevnikData() {
   const [entries, setEntriesState] = useState<DiaryEntry[]>([]);
@@ -17,6 +17,12 @@ export function useDnevnikData() {
   const [previewState, setPreviewStateLocal] = useState<PreviewState | null>(null);
   const [financeTransactions, setFinanceState] = useState<FinanceTransaction[]>([]);
   const [savingsGoals, setSavingsState] = useState<SavingsGoal[]>([]);
+  const [sharedPlans, setSharedPlansState] = useState<SharedPlan[]>([]);
+  const [planTransactions, setPlanTransactionsState] = useState<PlanTransaction[]>([]);
+  const [importantDates, setImportantDatesState] = useState<ImportantDate[]>([]);
+  const [calendarEvents, setCalendarEventsState] = useState<CalendarEvent[]>([]);
+  const [documents, setDocumentsState] = useState<DocumentItem[]>([]);
+  const [loyaltyCards, setLoyaltyCardsState] = useState<LoyaltyCard[]>([]);
   const [status, setStatus] = useState<DbStatus>({ ready: false, usingFallback: false });
 
   useEffect(() => {
@@ -33,6 +39,12 @@ export function useDnevnikData() {
       setPreviewStateLocal(result.data.preview);
       setFinanceState(result.data.financeTransactions);
       setSavingsState(result.data.savingsGoals);
+      setSharedPlansState(result.data.sharedPlans);
+      setPlanTransactionsState(result.data.planTransactions);
+      setImportantDatesState(result.data.importantDates);
+      setCalendarEventsState(result.data.calendarEvents);
+      setDocumentsState(result.data.documents);
+      setLoyaltyCardsState(result.data.loyaltyCards);
       setStatus({ ready: true, usingFallback: result.usingFallback, warning: result.warning });
     });
     return () => {
@@ -146,13 +158,67 @@ export function useDnevnikData() {
     });
   }, []);
 
+  const setSharedPlans = useCallback((next: SharedPlan[] | ((current: SharedPlan[]) => SharedPlan[])) => {
+    setSharedPlansState((current) => {
+      const value = typeof next === "function" ? next(current) : next;
+      void saveSharedPlansDb(value);
+      try { saveSharedPlans(value); } catch {}
+      return value;
+    });
+  }, []);
+
+  const setPlanTransactions = useCallback((next: PlanTransaction[] | ((current: PlanTransaction[]) => PlanTransaction[])) => {
+    setPlanTransactionsState((current) => {
+      const value = typeof next === "function" ? next(current) : next;
+      void savePlanTransactionsDb(value);
+      try { savePlanTransactions(value); } catch {}
+      return value;
+    });
+  }, []);
+
+  const setImportantDates = useCallback((next: ImportantDate[] | ((current: ImportantDate[]) => ImportantDate[])) => {
+    setImportantDatesState((current) => {
+      const value = typeof next === "function" ? next(current) : next;
+      void saveImportantDatesDb(value);
+      try { saveImportantDates(value); } catch {}
+      return value;
+    });
+  }, []);
+
+  const setCalendarEvents = useCallback((next: CalendarEvent[] | ((current: CalendarEvent[]) => CalendarEvent[])) => {
+    setCalendarEventsState((current) => {
+      const value = typeof next === "function" ? next(current) : next;
+      void saveCalendarEventsDb(value);
+      try { saveCalendarEvents(value); } catch {}
+      return value;
+    });
+  }, []);
+
+  const setDocuments = useCallback((next: DocumentItem[] | ((current: DocumentItem[]) => DocumentItem[])) => {
+    setDocumentsState((current) => {
+      const value = typeof next === "function" ? next(current) : next;
+      void saveDocumentsDb(value);
+      try { saveDocuments(value); } catch {}
+      return value;
+    });
+  }, []);
+
+  const setLoyaltyCards = useCallback((next: LoyaltyCard[] | ((current: LoyaltyCard[]) => LoyaltyCard[])) => {
+    setLoyaltyCardsState((current) => {
+      const value = typeof next === "function" ? next(current) : next;
+      void saveLoyaltyCardsDb(value);
+      try { saveLoyaltyCards(value); } catch {}
+      return value;
+    });
+  }, []);
+
   const exportData = useCallback(async () => {
     try {
       return await exportIndexedDbData();
     } catch {
-      return { entries, spaces, projects, members, knowledge, draft, preview: previewState, settings, financeTransactions, savingsGoals };
+      return { entries, spaces, projects, members, knowledge, draft, preview: previewState, settings, financeTransactions, savingsGoals, sharedPlans, planTransactions, importantDates, calendarEvents, documents, loyaltyCards };
     }
-  }, [draft, entries, financeTransactions, knowledge, members, previewState, projects, savingsGoals, settings, spaces]);
+  }, [calendarEvents, documents, draft, entries, financeTransactions, importantDates, knowledge, loyaltyCards, members, planTransactions, previewState, projects, savingsGoals, settings, sharedPlans, spaces]);
 
   const importData = useCallback((data: unknown) => {
     const ok = importDnevnikData(data);
@@ -168,6 +234,12 @@ export function useDnevnikData() {
     setPreviewStateLocal(next.preview ?? null);
     setFinanceState(Array.isArray(next.financeTransactions) ? next.financeTransactions : []);
     setSavingsState(Array.isArray(next.savingsGoals) ? next.savingsGoals : []);
+    setSharedPlansState(Array.isArray(next.sharedPlans) ? next.sharedPlans : []);
+    setPlanTransactionsState(Array.isArray(next.planTransactions) ? next.planTransactions : []);
+    setImportantDatesState(Array.isArray(next.importantDates) ? next.importantDates : []);
+    setCalendarEventsState(Array.isArray(next.calendarEvents) ? next.calendarEvents : []);
+    setDocumentsState(Array.isArray(next.documents) ? next.documents : []);
+    setLoyaltyCardsState(Array.isArray(next.loyaltyCards) ? next.loyaltyCards : []);
     void saveEntriesDb(Array.isArray(next.entries) ? next.entries : []);
     void saveSpacesDb(Array.isArray(next.spaces) ? next.spaces : defaultSpaces);
     void saveProjectsDb(Array.isArray(next.projects) ? next.projects : []);
@@ -178,6 +250,12 @@ export function useDnevnikData() {
     void savePreviewDb(next.preview ?? null);
     void saveFinanceDb(Array.isArray(next.financeTransactions) ? next.financeTransactions : []);
     void saveSavingsDb(Array.isArray(next.savingsGoals) ? next.savingsGoals : []);
+    void saveSharedPlansDb(Array.isArray(next.sharedPlans) ? next.sharedPlans : []);
+    void savePlanTransactionsDb(Array.isArray(next.planTransactions) ? next.planTransactions : []);
+    void saveImportantDatesDb(Array.isArray(next.importantDates) ? next.importantDates : []);
+    void saveCalendarEventsDb(Array.isArray(next.calendarEvents) ? next.calendarEvents : []);
+    void saveDocumentsDb(Array.isArray(next.documents) ? next.documents : []);
+    void saveLoyaltyCardsDb(Array.isArray(next.loyaltyCards) ? next.loyaltyCards : []);
     return true;
   }, []);
 
@@ -194,10 +272,16 @@ export function useDnevnikData() {
     setKnowledge(defaultKnowledge);
     setFinanceTransactions([]);
     setSavingsGoals([]);
+    setSharedPlans([]);
+    setPlanTransactions([]);
+    setImportantDates([]);
+    setCalendarEvents([]);
+    setDocuments([]);
+    setLoyaltyCards([]);
     setDraft(null);
     setPreviewState(null);
     clearAllDnevnikStorage({ learnedRules: true });
-  }, [setDraft, setEntries, setFinanceTransactions, setKnowledge, setMembers, setPreviewState, setProjects, setSavingsGoals, setSpaces]);
+  }, [setCalendarEvents, setDocuments, setDraft, setEntries, setFinanceTransactions, setImportantDates, setKnowledge, setLoyaltyCards, setMembers, setPlanTransactions, setPreviewState, setProjects, setSavingsGoals, setSharedPlans, setSpaces]);
 
   return useMemo(
     () => ({
@@ -221,12 +305,24 @@ export function useDnevnikData() {
       setFinanceTransactions,
       savingsGoals,
       setSavingsGoals,
+      sharedPlans,
+      setSharedPlans,
+      planTransactions,
+      setPlanTransactions,
+      importantDates,
+      setImportantDates,
+      calendarEvents,
+      setCalendarEvents,
+      documents,
+      setDocuments,
+      loyaltyCards,
+      setLoyaltyCards,
       status,
       exportData,
       importData,
       clearEntries,
       clearEverything
     }),
-    [clearEntries, clearEverything, draft, entries, exportData, financeTransactions, importData, knowledge, members, previewState, projects, savingsGoals, setDraft, setEntries, setFinanceTransactions, setKnowledge, setMembers, setPreviewState, setProjects, setSavingsGoals, setSettings, setSpaces, settings, spaces, status]
+    [calendarEvents, clearEntries, clearEverything, documents, draft, entries, exportData, financeTransactions, importData, importantDates, knowledge, loyaltyCards, members, planTransactions, previewState, projects, savingsGoals, setCalendarEvents, setDocuments, setDraft, setEntries, setFinanceTransactions, setImportantDates, setKnowledge, setLoyaltyCards, setMembers, setPlanTransactions, setPreviewState, setProjects, setSavingsGoals, setSettings, setSharedPlans, setSpaces, settings, sharedPlans, spaces, status]
   );
 }

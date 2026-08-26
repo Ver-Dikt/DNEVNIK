@@ -1,22 +1,36 @@
 "use client";
 
-import { Archive, Lightbulb, Search, Settings, WalletCards } from "lucide-react";
+import { Archive, CalendarHeart, FileText, Gift, Lightbulb, Search, Settings, Target, WalletCards } from "lucide-react";
 import { Button, Field, Input, Segmented, Surface } from "@/components/ui/native";
 import { EntryCard } from "@/features/entries/EntryCard";
+import { DocumentsView, ImportantDatesView, LoyaltyCardsView, SharedPlansView } from "@/features/family/FamilyViews";
 import { WishlistView } from "@/features/wishlist/WishlistView";
 import { calculateBudget } from "@/lib/finance";
-import type { AppSettings, DiaryEntry, Member, Space } from "@/lib/types";
+import type { AppSettings, CalendarEvent, DiaryEntry, DocumentItem, ImportantDate, LoyaltyCard, Member, PlanTransaction, SharedPlan, Space } from "@/lib/types";
 import type { MoreSection, ScreenId } from "@/features/app/types";
 
 export function MoreView({
   activeSection,
   entries,
   members,
+  calendarEvents,
+  documents,
+  importantDates,
+  loyaltyCards,
+  planTransactions,
   query,
   settings,
+  sharedPlans,
   spaces,
+  onChangeCalendarEvents,
+  onChangeDocuments,
+  onChangeImportantDates,
+  onChangeLoyaltyCards,
+  onChangePlanTransactions,
   onChangeQuery,
   onChangeSection,
+  onChangeSharedPlans,
+  onChangeEntries,
   onChangeSettings,
   onClearAll,
   onClearEntries,
@@ -29,11 +43,24 @@ export function MoreView({
   activeSection: MoreSection;
   entries: DiaryEntry[];
   members: Member[];
+  calendarEvents: CalendarEvent[];
+  documents: DocumentItem[];
+  importantDates: ImportantDate[];
+  loyaltyCards: LoyaltyCard[];
+  planTransactions: PlanTransaction[];
   query: string;
   settings: AppSettings;
+  sharedPlans: SharedPlan[];
   spaces: Space[];
+  onChangeCalendarEvents: (events: CalendarEvent[] | ((current: CalendarEvent[]) => CalendarEvent[])) => void;
+  onChangeDocuments: (documents: DocumentItem[] | ((current: DocumentItem[]) => DocumentItem[])) => void;
+  onChangeImportantDates: (dates: ImportantDate[] | ((current: ImportantDate[]) => ImportantDate[])) => void;
+  onChangeLoyaltyCards: (cards: LoyaltyCard[] | ((current: LoyaltyCard[]) => LoyaltyCard[])) => void;
+  onChangePlanTransactions: (transactions: PlanTransaction[] | ((current: PlanTransaction[]) => PlanTransaction[])) => void;
   onChangeQuery: (query: string) => void;
   onChangeSection: (section: MoreSection) => void;
+  onChangeSharedPlans: (plans: SharedPlan[] | ((current: SharedPlan[]) => SharedPlan[])) => void;
+  onChangeEntries: (entries: DiaryEntry[] | ((current: DiaryEntry[]) => DiaryEntry[])) => void;
   onChangeSettings: (settings: AppSettings) => void;
   onClearAll: () => void;
   onClearEntries: () => void;
@@ -43,12 +70,16 @@ export function MoreView({
   onNavigate: (screen: ScreenId) => void;
   onOpenEntry: (entry: DiaryEntry) => void;
 }) {
-  if (activeSection === "wishlist") return <SectionShell onBack={() => onChangeSection(null)}><WishlistView entries={entries} spaces={spaces} onComplete={onComplete} onOpen={onOpenEntry} /></SectionShell>;
+  if (activeSection === "wishlist") return <SectionShell onBack={() => onChangeSection(null)}><WishlistView entries={entries} members={members} spaces={spaces} onChangeEntries={onChangeEntries} onCreateManual={() => undefined} onComplete={onComplete} onOpen={onOpenEntry} /></SectionShell>;
+  if (activeSection === "sharedPlans") return <SectionShell onBack={() => onChangeSection(null)}><SharedPlansView defaultCurrency={settings.defaultCurrency} plans={sharedPlans} transactions={planTransactions} onChangePlans={onChangeSharedPlans} onChangeTransactions={onChangePlanTransactions} /></SectionShell>;
+  if (activeSection === "importantDates") return <SectionShell onBack={() => onChangeSection(null)}><ImportantDatesView dates={importantDates} events={calendarEvents} onChangeDates={onChangeImportantDates} onChangeEvents={onChangeCalendarEvents} /></SectionShell>;
+  if (activeSection === "documents") return <SectionShell onBack={() => onChangeSection(null)}><DocumentsView documents={documents} onChangeDocuments={onChangeDocuments} /></SectionShell>;
+  if (activeSection === "loyaltyCards") return <SectionShell onBack={() => onChangeSection(null)}><LoyaltyCardsView cards={loyaltyCards} onChangeCards={onChangeLoyaltyCards} /></SectionShell>;
   if (activeSection === "ideas") return <SectionShell onBack={() => onChangeSection(null)}><EntryList title="Идеи" entries={entries.filter((entry) => entry.kind === "idea")} spaces={spaces} onComplete={onComplete} onOpenEntry={onOpenEntry} /></SectionShell>;
   if (activeSection === "review") return <SectionShell onBack={() => onChangeSection(null)}><EntryList title="Разобрать" entries={entries.filter((entry) => entry.needsReview || entry.kind === "inbox")} spaces={spaces} onComplete={onComplete} onOpenEntry={onOpenEntry} /></SectionShell>;
   if (activeSection === "archive") return <SectionShell onBack={() => onChangeSection(null)}><EntryList title="Архив" entries={entries.filter((entry) => entry.status === "done" || entry.status === "bought" || entry.status === "cancelled")} spaces={spaces} onComplete={onComplete} onOpenEntry={onOpenEntry} /></SectionShell>;
   if (activeSection === "money") return <SectionShell onBack={() => onChangeSection(null)}><MoneyView entries={entries} spaces={spaces} onOpenEntry={onOpenEntry} /></SectionShell>;
-  if (activeSection === "search") return <SectionShell onBack={() => onChangeSection(null)}><SearchView entries={entries} query={query} spaces={spaces} onChangeQuery={onChangeQuery} onComplete={onComplete} onOpenEntry={onOpenEntry} /></SectionShell>;
+  if (activeSection === "search") return <SectionShell onBack={() => onChangeSection(null)}><SearchView calendarEvents={calendarEvents} documents={documents} entries={entries} importantDates={importantDates} loyaltyCards={loyaltyCards} query={query} sharedPlans={sharedPlans} spaces={spaces} onChangeQuery={onChangeQuery} onComplete={onComplete} onOpenEntry={onOpenEntry} /></SectionShell>;
   if (activeSection === "settings") return <SectionShell onBack={() => onChangeSection(null)}><SettingsView members={members} settings={settings} onChangeSettings={onChangeSettings} onClearAll={onClearAll} onClearEntries={onClearEntries} onExport={onExport} onImport={onImport} /></SectionShell>;
 
   const reviewCount = entries.filter((entry) => entry.needsReview || entry.kind === "inbox").length;
@@ -58,18 +89,32 @@ export function MoreView({
         <p className="text-sm font-bold text-[var(--muted)]">Дополнительно</p>
         <h1 className="text-3xl font-black">Ещё</h1>
       </div>
-      <div className="grid gap-2">
-        <MoreButton title="Хотелки" detail="Сохранённые вещи на будущее" icon={<Archive size={20} />} onClick={() => onChangeSection("wishlist")} />
-        <MoreButton title="Идеи" detail="Мысли и наброски" icon={<Lightbulb size={20} />} onClick={() => onChangeSection("ideas")} />
+      <MoreGroup title="Вместе">
+        <MoreButton title="Хотелки" detail="Моё, партнёра и общее" icon={<Gift size={20} />} onClick={() => onChangeSection("wishlist")} />
+        <MoreButton title="Общие планы" detail="Цели, поездки, копилка" icon={<Target size={20} />} onClick={() => onChangeSection("sharedPlans")} />
+        <MoreButton title="Важные даты" detail="Дни рождения, годовщины, события" icon={<CalendarHeart size={20} />} onClick={() => onChangeSection("importantDates")} />
+      </MoreGroup>
+      <MoreGroup title="Деньги">
         <MoreButton title="Деньги" detail="Планируемые траты и покупки" icon={<WalletCards size={20} />} onClick={() => onChangeSection("money")} />
+      </MoreGroup>
+      <MoreGroup title="Хранить">
+        <MoreButton title="Документы" detail="Файлы локально и офлайн" icon={<FileText size={20} />} onClick={() => onChangeSection("documents")} />
+        <MoreButton title="Карты" detail="Карты лояльности и штрихкоды" icon={<WalletCards size={20} />} onClick={() => onChangeSection("loyaltyCards")} />
+      </MoreGroup>
+      <MoreGroup title="Система">
+        <MoreButton title="Идеи" detail="Мысли и наброски" icon={<Lightbulb size={20} />} onClick={() => onChangeSection("ideas")} />
         <MoreButton title={reviewCount ? `Разобрать · ${reviewCount}` : "Разобрать"} detail="То, что парсер не понял уверенно" icon={<Archive size={20} />} onClick={() => onChangeSection("review")} />
         <MoreButton title="Поиск" detail="Найти запись, проект или ссылку" icon={<Search size={20} />} onClick={() => onChangeSection("search")} />
         <MoreButton title="Архив" detail="Готовое и старое" icon={<Archive size={20} />} onClick={() => onChangeSection("archive")} />
         <MoreButton title="Настройки" detail="Совместное, ввод, данные" icon={<Settings size={20} />} onClick={() => onChangeSection("settings")} />
-      </div>
+      </MoreGroup>
       <Button className="font-bold" onClick={() => onNavigate("plan")}>Вернуться в план</Button>
     </div>
   );
+}
+
+function MoreGroup({ children, title }: { children: React.ReactNode; title: string }) {
+  return <section className="grid gap-2"><h2 className="px-1 text-sm font-black text-[var(--muted)]">{title}</h2>{children}</section>;
 }
 
 function SectionShell({ children, onBack }: { children: React.ReactNode; onBack: () => void }) {
@@ -104,22 +149,34 @@ function EntryList({ entries, onComplete, onOpenEntry, spaces, title }: { entrie
   );
 }
 
-function SearchView({ entries, onChangeQuery, onComplete, onOpenEntry, query, spaces }: { entries: DiaryEntry[]; onChangeQuery: (query: string) => void; onComplete: (entry: DiaryEntry) => void; onOpenEntry: (entry: DiaryEntry) => void; query: string; spaces: Space[] }) {
+function SearchView({ calendarEvents, documents, entries, importantDates, loyaltyCards, onChangeQuery, onComplete, onOpenEntry, query, sharedPlans, spaces }: { calendarEvents: CalendarEvent[]; documents: DocumentItem[]; entries: DiaryEntry[]; importantDates: ImportantDate[]; loyaltyCards: LoyaltyCard[]; onChangeQuery: (query: string) => void; onComplete: (entry: DiaryEntry) => void; onOpenEntry: (entry: DiaryEntry) => void; query: string; sharedPlans: SharedPlan[]; spaces: Space[] }) {
   const needle = query.toLowerCase().trim();
   const results = needle ? entries.filter((entry) => `${entry.title} ${entry.description ?? ""} ${entry.area ?? ""} ${entry.project ?? ""} ${entry.url ?? ""}`.toLowerCase().includes(needle)) : [];
+  const familyResults = needle ? [
+    ...sharedPlans.filter((item) => matchesText(needle, item.title, item.description, item.type)).map((item) => ({ id: item.id, title: item.title, meta: "Общий план" })),
+    ...importantDates.filter((item) => matchesText(needle, item.title, item.personName, item.date)).map((item) => ({ id: item.id, title: item.title, meta: "Важная дата" })),
+    ...calendarEvents.filter((item) => matchesText(needle, item.title, item.notes, item.startDate, item.endDate)).map((item) => ({ id: item.id, title: item.title, meta: "Событие" })),
+    ...documents.filter((item) => matchesText(needle, item.title, item.note, item.category)).map((item) => ({ id: item.id, title: item.title, meta: "Документ" })),
+    ...loyaltyCards.filter((item) => matchesText(needle, item.title, item.barcodeValue)).map((item) => ({ id: item.id, title: item.title, meta: "Карта" }))
+  ] : [];
   return (
     <div className="grid gap-4">
       <h1 className="text-3xl font-black">Поиск</h1>
       <Input autoFocus placeholder="Что ищем?" value={query} onChange={(event) => onChangeQuery(event.target.value)} />
       {results.map((entry) => <EntryCard entry={entry} key={entry.id} spaces={spaces} onComplete={() => onComplete(entry)} onOpen={() => onOpenEntry(entry)} />)}
-      {needle && !results.length ? <Surface className="p-6 text-center text-sm text-[var(--muted)]">Ничего не нашлось.</Surface> : null}
+      {familyResults.map((item) => <Surface className="p-4" key={`${item.meta}-${item.id}`}><div className="font-black">{item.title}</div><div className="text-sm text-[var(--muted)]">{item.meta}</div></Surface>)}
+      {needle && !results.length && !familyResults.length ? <Surface className="p-6 text-center text-sm text-[var(--muted)]">Ничего не нашлось.</Surface> : null}
     </div>
   );
 }
 
+function matchesText(needle: string, ...values: Array<string | undefined>) {
+  return values.filter(Boolean).join(" ").toLowerCase().includes(needle);
+}
+
 function MoneyView({ entries, onOpenEntry, spaces }: { entries: DiaryEntry[]; onOpenEntry: (entry: DiaryEntry) => void; spaces: Space[] }) {
   const budget = calculateBudget(entries);
-  const moneyEntries = entries.filter((entry) => entry.kind === "purchase" || entry.kind === "wish");
+  const moneyEntries = entries.filter((entry) => entry.kind === "purchase");
   return (
     <div className="grid gap-4">
       <h1 className="text-3xl font-black">Деньги</h1>

@@ -3,13 +3,19 @@
 import type {
   AppSettings,
   Area,
+  CalendarEvent,
   DiaryEntry,
+  DocumentItem,
   DraftState,
   FinanceTransaction,
+  ImportantDate,
   KnowledgeStore,
+  LoyaltyCard,
   Member,
+  PlanTransaction,
   PreviewState,
   ProjectNode,
+  SharedPlan,
   Space,
   SavingsGoal
 } from "@/lib/types";
@@ -62,6 +68,12 @@ const draftKey = "dnevnik.draft";
 const previewKey = "dnevnik.preview";
 const financeKey = "dnevnik.finance";
 const savingsKey = "dnevnik.savings";
+const sharedPlansKey = "dnevnik.sharedPlans";
+const planTransactionsKey = "dnevnik.planTransactions";
+const importantDatesKey = "dnevnik.importantDates";
+const calendarEventsKey = "dnevnik.calendarEvents";
+const documentsKey = "dnevnik.documents";
+const loyaltyCardsKey = "dnevnik.loyaltyCards";
 const spacesKey = "dnevnik.spaces";
 const storageVersionKey = "dnevnik.storageVersion";
 const backupV2Key = "dnevnik.backup.v2";
@@ -70,8 +82,8 @@ const currentStorageVersion = "4";
 const seedIds = new Set(["seed-task", "seed-purchase", "seed-idea"]);
 
 export const defaultMembers: Member[] = [
-  { id: "me", name: "Я", role: "owner", avatar: "Я", createdAt: "2026-01-01T00:00:00.000Z" },
-  { id: "partner", name: "Партнёр", role: "partner", avatar: "П", createdAt: "2026-01-01T00:00:00.000Z" }
+  { id: "me", name: "Я", role: "owner", avatar: "Я", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z", revision: 1 },
+  { id: "partner", name: "Партнёр", role: "partner", avatar: "П", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z", revision: 1 }
 ];
 
 export const defaultAreas: Area[] = ["Дом", "Музыка", "Работа", "Личное", "Семья", "Студия"].map((name) => ({
@@ -253,6 +265,60 @@ export function saveSavingsGoals(goals: SavingsGoal[]): void {
   localStorage.setItem(savingsKey, JSON.stringify(goals));
 }
 
+export function loadSharedPlans(): SharedPlan[] {
+  migrateStorage();
+  return readJson<SharedPlan[]>(sharedPlansKey, []);
+}
+
+export function saveSharedPlans(plans: SharedPlan[]): void {
+  localStorage.setItem(sharedPlansKey, JSON.stringify(plans));
+}
+
+export function loadPlanTransactions(): PlanTransaction[] {
+  migrateStorage();
+  return readJson<PlanTransaction[]>(planTransactionsKey, []);
+}
+
+export function savePlanTransactions(transactions: PlanTransaction[]): void {
+  localStorage.setItem(planTransactionsKey, JSON.stringify(transactions));
+}
+
+export function loadImportantDates(): ImportantDate[] {
+  migrateStorage();
+  return readJson<ImportantDate[]>(importantDatesKey, []);
+}
+
+export function saveImportantDates(dates: ImportantDate[]): void {
+  localStorage.setItem(importantDatesKey, JSON.stringify(dates));
+}
+
+export function loadCalendarEvents(): CalendarEvent[] {
+  migrateStorage();
+  return readJson<CalendarEvent[]>(calendarEventsKey, []);
+}
+
+export function saveCalendarEvents(events: CalendarEvent[]): void {
+  localStorage.setItem(calendarEventsKey, JSON.stringify(events));
+}
+
+export function loadDocuments(): DocumentItem[] {
+  migrateStorage();
+  return readJson<DocumentItem[]>(documentsKey, []);
+}
+
+export function saveDocuments(documents: DocumentItem[]): void {
+  localStorage.setItem(documentsKey, JSON.stringify(documents));
+}
+
+export function loadLoyaltyCards(): LoyaltyCard[] {
+  migrateStorage();
+  return readJson<LoyaltyCard[]>(loyaltyCardsKey, []);
+}
+
+export function saveLoyaltyCards(cards: LoyaltyCard[]): void {
+  localStorage.setItem(loyaltyCardsKey, JSON.stringify(cards));
+}
+
 export function exportDnevnikData() {
   migrateStorage();
   return {
@@ -265,6 +331,12 @@ export function exportDnevnikData() {
     knowledge: loadKnowledge(),
     finance: loadFinanceTransactions(),
     savings: loadSavingsGoals(),
+    sharedPlans: loadSharedPlans(),
+    planTransactions: loadPlanTransactions(),
+    importantDates: loadImportantDates(),
+    calendarEvents: loadCalendarEvents(),
+    documents: loadDocuments(),
+    loyaltyCards: loadLoyaltyCards(),
     spaces: loadSpaces(),
     settings: loadSettings()
   };
@@ -282,6 +354,12 @@ export function importDnevnikData(data: unknown): boolean {
   localStorage.setItem(knowledgeKey, JSON.stringify(next.knowledge ?? defaultKnowledge));
   localStorage.setItem(financeKey, JSON.stringify(Array.isArray(next.finance) ? next.finance : []));
   localStorage.setItem(savingsKey, JSON.stringify(Array.isArray(next.savings) ? next.savings : []));
+  localStorage.setItem(sharedPlansKey, JSON.stringify(Array.isArray(next.sharedPlans) ? next.sharedPlans : []));
+  localStorage.setItem(planTransactionsKey, JSON.stringify(Array.isArray(next.planTransactions) ? next.planTransactions : []));
+  localStorage.setItem(importantDatesKey, JSON.stringify(Array.isArray(next.importantDates) ? next.importantDates : []));
+  localStorage.setItem(calendarEventsKey, JSON.stringify(Array.isArray(next.calendarEvents) ? next.calendarEvents : []));
+  localStorage.setItem(documentsKey, JSON.stringify(Array.isArray(next.documents) ? next.documents : []));
+  localStorage.setItem(loyaltyCardsKey, JSON.stringify(Array.isArray(next.loyaltyCards) ? next.loyaltyCards : []));
   localStorage.setItem(settingsKey, JSON.stringify({ ...defaultSettings, ...(next.settings ?? {}) }));
   localStorage.setItem(storageVersionKey, currentStorageVersion);
   return true;
@@ -301,6 +379,12 @@ export function clearAllDnevnikStorage(options: { learnedRules?: boolean } = {})
   localStorage.setItem(knowledgeKey, JSON.stringify(defaultKnowledge));
   localStorage.setItem(financeKey, JSON.stringify([]));
   localStorage.setItem(savingsKey, JSON.stringify([]));
+  localStorage.setItem(sharedPlansKey, JSON.stringify([]));
+  localStorage.setItem(planTransactionsKey, JSON.stringify([]));
+  localStorage.setItem(importantDatesKey, JSON.stringify([]));
+  localStorage.setItem(calendarEventsKey, JSON.stringify([]));
+  localStorage.setItem(documentsKey, JSON.stringify([]));
+  localStorage.setItem(loyaltyCardsKey, JSON.stringify([]));
   localStorage.removeItem(draftKey);
   localStorage.removeItem(previewKey);
   localStorage.setItem(storageVersionKey, currentStorageVersion);
@@ -362,6 +446,12 @@ function migrateStorage(): void {
   localStorage.setItem(knowledgeKey, JSON.stringify(defaultKnowledge));
   localStorage.setItem(financeKey, JSON.stringify(readJson<FinanceTransaction[]>(financeKey, [])));
   localStorage.setItem(savingsKey, JSON.stringify(readJson<SavingsGoal[]>(savingsKey, [])));
+  localStorage.setItem(sharedPlansKey, JSON.stringify(readJson<SharedPlan[]>(sharedPlansKey, [])));
+  localStorage.setItem(planTransactionsKey, JSON.stringify(readJson<PlanTransaction[]>(planTransactionsKey, [])));
+  localStorage.setItem(importantDatesKey, JSON.stringify(readJson<ImportantDate[]>(importantDatesKey, [])));
+  localStorage.setItem(calendarEventsKey, JSON.stringify(readJson<CalendarEvent[]>(calendarEventsKey, [])));
+  localStorage.setItem(documentsKey, JSON.stringify(readJson<DocumentItem[]>(documentsKey, [])));
+  localStorage.setItem(loyaltyCardsKey, JSON.stringify(readJson<LoyaltyCard[]>(loyaltyCardsKey, [])));
   localStorage.setItem(settingsKey, JSON.stringify({ ...defaultSettings, ...previous.settings }));
   localStorage.setItem(storageVersionKey, currentStorageVersion);
 }

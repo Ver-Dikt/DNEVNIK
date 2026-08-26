@@ -3,13 +3,14 @@
 import { Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { Button, Field, Input, Segmented, Select, Surface, Textarea } from "@/components/ui/native";
-import type { AssignedTo, DiaryEntry, EntryKind, ProjectNode, PurchaseStatus, RepeatRule, Space, WishStatus } from "@/lib/types";
+import type { AssignedTo, DiaryEntry, EntryKind, Member, ProjectNode, PurchaseStatus, RepeatRule, Space, WishStatus } from "@/lib/types";
 import { purchaseStatus, purchaseStatusToEntryStatus, wishStatus } from "@/features/shared/entry-utils";
 import { addDays } from "@/features/shared/date-utils";
 import { todayIso } from "@/lib/dates";
 
 export function EntryDetailSheet({
   entry,
+  members,
   projects,
   spaces,
   onChange,
@@ -20,6 +21,7 @@ export function EntryDetailSheet({
   onRemember
 }: {
   entry: DiaryEntry;
+  members: Member[];
   projects: ProjectNode[];
   spaces: Space[];
   onChange: (patch: Partial<DiaryEntry>) => void;
@@ -34,6 +36,11 @@ export function EntryDetailSheet({
   const [checkText, setCheckText] = useState("");
   const currentPurchaseStatus = purchaseStatus(entry);
   const currentWishStatus = wishStatus(entry);
+  const isWish = entry.kind === "wish";
+  const isPurchase = entry.kind === "purchase";
+  const isWork = entry.area === "Работа" || entry.domain === "work";
+  const showStructure = !isWish && !isPurchase && !isWork && entry.kind !== "task" && entry.kind !== "idea";
+  const showCalendar = !isWish && !isPurchase && entry.kind !== "idea";
   const visibleProjects = projects.filter((project) => !entry.spaceId || project.spaceId === entry.spaceId || project.area === entry.area);
 
   return (
@@ -50,93 +57,113 @@ export function EntryDetailSheet({
             <Input value={entry.title} onChange={(event) => onChange({ title: event.target.value })} />
           </Field>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Тип">
-              <Select value={entry.kind} onChange={(event) => onChange({ kind: event.target.value as EntryKind })}>
-                <option value="task">Дело</option>
-                <option value="purchase">Покупка</option>
-                <option value="wish">Хотелка</option>
-                <option value="idea">Идея</option>
-                <option value="note">Заметка</option>
-              </Select>
-            </Field>
+            {showStructure ? (
+              <Field label="Тип">
+                <Select value={entry.kind} onChange={(event) => onChange({ kind: event.target.value as EntryKind })}>
+                  <option value="task">Дело</option>
+                  <option value="purchase">Покупка</option>
+                  <option value="wish">Хотелка</option>
+                  <option value="idea">Идея</option>
+                  <option value="note">Заметка</option>
+                </Select>
+              </Field>
+            ) : null}
             <Field label="Кому">
               <Select value={entry.assignedTo ?? "me"} onChange={(event) => onChange({ assignedTo: event.target.value as AssignedTo, visibility: event.target.value === "shared" ? "shared" : "private" })}>
-                <option value="me">Моё</option>
-                <option value="partner">Партнёр</option>
+                <option value="me">{memberName(members, "me")}</option>
+                <option value="partner">{memberName(members, "partner")}</option>
                 <option value="shared">Общее</option>
               </Select>
             </Field>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Пространство">
-              <Select value={entry.spaceId ?? ""} onChange={(event) => {
-                const space = spaces.find((item) => item.id === event.target.value);
-                onChange({ spaceId: space?.id, area: space?.name, projectId: undefined, project: undefined, projectPath: space ? [space.name] : [] });
-              }}>
-                <option value="">Без пространства</option>
-                {spaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}
-              </Select>
-            </Field>
-            <Field label="Проект">
-              <Select value={entry.projectId ?? ""} onChange={(event) => {
-                const project = projects.find((item) => item.id === event.target.value);
-                onChange({ projectId: project?.id, project: project?.name, projectPath: [entry.area, project?.name].filter(Boolean) as string[] });
-              }}>
-                <option value="">Без проекта</option>
-                {visibleProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-              </Select>
-            </Field>
-          </div>
+          {showStructure ? (
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Пространство">
+                  <Select value={entry.spaceId ?? ""} onChange={(event) => {
+                    const space = spaces.find((item) => item.id === event.target.value);
+                    onChange({ spaceId: space?.id, area: space?.name, projectId: undefined, project: undefined, projectPath: space ? [space.name] : [] });
+                  }}>
+                    <option value="">Без пространства</option>
+                    {spaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}
+                  </Select>
+                </Field>
+                <Field label="Проект">
+                  <Select value={entry.projectId ?? ""} onChange={(event) => {
+                    const project = projects.find((item) => item.id === event.target.value);
+                    onChange({ projectId: project?.id, project: project?.name, projectPath: [entry.area, project?.name].filter(Boolean) as string[] });
+                  }}>
+                    <option value="">Без проекта</option>
+                    {visibleProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                  </Select>
+                </Field>
+              </div>
 
-          <div className="grid gap-2 rounded-3xl bg-black/[.035] p-3">
-            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-              <Input placeholder="Новое пространство" value={newSpace} onChange={(event) => setNewSpace(event.target.value)} />
-              <Button className="px-4 font-bold" onClick={() => {
-                const name = newSpace.trim();
-                if (!name) return;
-                const space = onCreateSpace(name);
-                onChange({ spaceId: space.id, area: space.name, projectPath: [space.name] });
-                setNewSpace("");
-              }}>Создать</Button>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-              <Input placeholder="Новый проект" value={newProject} onChange={(event) => setNewProject(event.target.value)} />
-              <Button className="px-4 font-bold" onClick={() => {
-                const name = newProject.trim();
-                if (!name) return;
-                const project = onCreateProject(name, entry.spaceId);
-                onChange({ projectId: project.id, project: project.name, projectPath: [entry.area, project.name].filter(Boolean) as string[] });
-                setNewProject("");
-              }}>Создать</Button>
-            </div>
-          </div>
+              <div className="grid gap-2 rounded-3xl bg-black/[.035] p-3">
+                <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <Input placeholder="Новое пространство" value={newSpace} onChange={(event) => setNewSpace(event.target.value)} />
+                  <Button className="px-4 font-bold" onClick={() => {
+                    const name = newSpace.trim();
+                    if (!name) return;
+                    const space = onCreateSpace(name);
+                    onChange({ spaceId: space.id, area: space.name, projectPath: [space.name] });
+                    setNewSpace("");
+                  }}>Создать</Button>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                  <Input placeholder="Новый проект" value={newProject} onChange={(event) => setNewProject(event.target.value)} />
+                  <Button className="px-4 font-bold" onClick={() => {
+                    const name = newProject.trim();
+                    if (!name) return;
+                    const project = onCreateProject(name, entry.spaceId);
+                    onChange({ projectId: project.id, project: project.name, projectPath: [entry.area, project.name].filter(Boolean) as string[] });
+                    setNewProject("");
+                  }}>Создать</Button>
+                </div>
+              </div>
+            </>
+          ) : null}
 
-          <div className="grid gap-3 sm:grid-cols-4">
-            <Field label="Дата"><Input type="date" value={entry.dueDate ?? ""} onChange={(event) => onChange({ dueDate: event.target.value || undefined, schedule: event.target.value ? "today" : "none" })} /></Field>
-            <Field label="Время"><Input type="time" value={entry.time ?? ""} onChange={(event) => onChange({ time: event.target.value || undefined })} /></Field>
-            <Field label="Повтор">
-              <Select value={entry.repeat ?? "none"} onChange={(event) => onChange({ repeat: event.target.value as RepeatRule })}>
-                <option value="none">Нет</option>
-                <option value="daily">Каждый день</option>
-                <option value="weekly">Каждую неделю</option>
-                <option value="weekly_monday">По понедельникам</option>
-                <option value="monthly">Каждый месяц</option>
-                <option value="monthly_first">Первого числа</option>
-              </Select>
-            </Field>
+          <div className={`grid gap-3 ${isWish ? "sm:grid-cols-1" : "sm:grid-cols-4"}`}>
+            {showCalendar ? (
+              <>
+                <Field label="Дата"><Input type="date" value={entry.dueDate ?? ""} onChange={(event) => onChange({ dueDate: event.target.value || undefined, schedule: event.target.value ? "today" : "none" })} /></Field>
+                <Field label="Время"><Input type="time" value={entry.time ?? ""} onChange={(event) => onChange({ time: event.target.value || undefined })} /></Field>
+                <Field label="Повтор">
+                  <Select value={entry.repeat ?? "none"} onChange={(event) => onChange({ repeat: event.target.value as RepeatRule })}>
+                    <option value="none">Нет</option>
+                    <option value="daily">Каждый день</option>
+                    <option value="weekly">Каждую неделю</option>
+                    <option value="weekly_monday">По понедельникам</option>
+                    <option value="monthly">Каждый месяц</option>
+                    <option value="monthly_first">Первого числа</option>
+                  </Select>
+                </Field>
+              </>
+            ) : null}
             <Field label="Срок">
               <Select value={entry.schedule} onChange={(event) => {
                 const schedule = event.target.value as DiaryEntry["schedule"];
-                onChange({ schedule, dueDate: dueDateForSchedule(schedule, entry.dueDate) });
+                onChange(isWish ? { schedule, dueDate: undefined, time: undefined, repeat: "none" } : { schedule, dueDate: dueDateForSchedule(schedule, entry.dueDate) });
               }}>
-                <option value="none">Без даты</option>
-                <option value="today">Сегодня</option>
-                <option value="tomorrow">Завтра</option>
-                <option value="this_week">Эта неделя</option>
-                <option value="next_week">Следующая</option>
-                <option value="this_month">Этот месяц</option>
-                <option value="someday">Когда-нибудь</option>
+                {isWish ? (
+                  <>
+                    <option value="none">Просто мысль</option>
+                    <option value="this_month">Скоро</option>
+                    <option value="someday">Когда-нибудь</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="none">Без даты</option>
+                    <option value="today">Сегодня</option>
+                    <option value="tomorrow">Завтра</option>
+                    <option value="this_week">Эта неделя</option>
+                    <option value="next_week">Следующая</option>
+                    <option value="this_month">Этот месяц</option>
+                    <option value="someday">Когда-нибудь</option>
+                  </>
+                )}
               </Select>
             </Field>
           </div>
@@ -173,7 +200,7 @@ export function EntryDetailSheet({
             </div>
           ) : null}
 
-          <Field label="Ссылка"><Input value={entry.url ?? ""} onChange={(event) => onChange({ url: event.target.value || undefined })} /></Field>
+          {!isPurchase ? <Field label="Ссылка"><Input value={entry.url ?? ""} onChange={(event) => onChange({ url: event.target.value || undefined })} /></Field> : null}
           <Field label="Заметки"><Textarea value={entry.description ?? ""} onChange={(event) => onChange({ description: event.target.value })} /></Field>
 
           <div className="grid gap-2">
@@ -205,6 +232,10 @@ export function EntryDetailSheet({
       </Surface>
     </div>
   );
+}
+
+function memberName(members: Member[], id: Member["id"]) {
+  return members.find((member) => member.id === id)?.name || (id === "me" ? "Моё" : "Партнёр");
 }
 
 function MoneyFields({ entry, mode, onChange }: { entry: DiaryEntry; mode: "purchase" | "wish"; onChange: (patch: Partial<DiaryEntry>) => void }) {

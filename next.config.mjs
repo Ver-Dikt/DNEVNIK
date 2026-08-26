@@ -3,6 +3,7 @@ const isGithubPages = process.env.GITHUB_PAGES === "true";
 
 const nextConfig = {
   reactStrictMode: true,
+  devIndicators: false,
   output: isGithubPages ? "export" : undefined,
   basePath: isGithubPages ? "/DNEVNIK" : undefined,
   assetPrefix: isGithubPages ? "/DNEVNIK/" : undefined,

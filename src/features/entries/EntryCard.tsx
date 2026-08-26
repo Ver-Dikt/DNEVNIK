@@ -1,16 +1,18 @@
 import { Check, Circle, ExternalLink, MoreHorizontal } from "lucide-react";
 import { Badge } from "@/components/ui/native";
 import { formatDateRu } from "@/lib/dates";
-import type { DiaryEntry, Space } from "@/lib/types";
+import type { DiaryEntry, Member, Space } from "@/lib/types";
 import { entrySpaceName, kindLabels, money, ownerLabel } from "@/features/shared/entry-utils";
 
 export function EntryCard({
   entry,
+  members = [],
   spaces,
   onComplete,
   onOpen
 }: {
   entry: DiaryEntry;
+  members?: Member[];
   spaces: Space[];
   onComplete: () => void;
   onOpen: () => void;
@@ -25,7 +27,7 @@ export function EntryCard({
       <button className="min-w-0 flex-1 text-left" onClick={onOpen} type="button">
         <div className="flex flex-wrap gap-1.5">
           <Badge>{kindLabels[entry.kind]}</Badge>
-          <Badge>{ownerLabel(entry.assignedTo)}</Badge>
+          <Badge>{ownerLabel(entry.assignedTo, members)}</Badge>
           {entry.priority === "high" ? <Badge className="text-[#b4233a]">важно</Badge> : null}
           {entry.needsReview ? <Badge className="text-[#a15c00]">разобрать</Badge> : null}
         </div>

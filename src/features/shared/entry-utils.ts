@@ -1,4 +1,4 @@
-import type { AssignedTo, DiaryEntry, EntryKind, EntryStatus, PurchaseStatus, Space, WishStatus } from "@/lib/types";
+import type { AssignedTo, DiaryEntry, EntryKind, EntryStatus, Member, PurchaseStatus, Space, WishStatus } from "@/lib/types";
 
 export const kindLabels: Record<EntryKind, string> = {
   task: "Дело",
@@ -9,15 +9,18 @@ export const kindLabels: Record<EntryKind, string> = {
   inbox: "Разобрать"
 };
 
-export function ownerLabel(owner?: AssignedTo): string {
+export function ownerLabel(owner?: AssignedTo, members: Member[] = []): string {
+  const member = members.find((item) => item.id === owner);
+  if (member?.name) return member.name;
   if (owner === "shared") return "Общее";
   if (owner === "partner") return "Партнёр";
   return "Моё";
 }
 
-export function matchesOwner(entry: DiaryEntry, filter: "all" | "me" | "shared"): boolean {
+export function matchesOwner(entry: DiaryEntry, filter: "all" | "me" | "partner" | "shared"): boolean {
   if (filter === "all") return true;
   if (filter === "shared") return entry.assignedTo === "shared" || entry.visibility === "shared";
+  if (filter === "partner") return entry.assignedTo === "partner";
   return !entry.assignedTo || entry.assignedTo === "me";
 }
 

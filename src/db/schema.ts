@@ -1,7 +1,7 @@
-import type { AppSettings, DiaryEntry, DraftState, FinanceTransaction, KnowledgeStore, Member, PreviewState, ProjectNode, SavingsGoal, Space } from "@/lib/types";
+import type { AppSettings, CalendarEvent, DiaryEntry, DocumentItem, DraftState, FinanceTransaction, ImportantDate, KnowledgeStore, LoyaltyCard, Member, PlanTransaction, PreviewState, ProjectNode, SavingsGoal, SharedPlan, Space } from "@/lib/types";
 
 export const dbName = "dnevnik-db";
-export const dbVersion = 1;
+export const dbVersion = 2;
 export const migrationMarkerKey = "dnevnik.indexeddb.migration.v1";
 export const migrationBackupKey = "dnevnik.backup.indexeddb-v1-pre-migration";
 
@@ -15,6 +15,12 @@ export const stores = [
   "settings",
   "financeTransactions",
   "savingsGoals",
+  "sharedPlans",
+  "planTransactions",
+  "importantDates",
+  "calendarEvents",
+  "documents",
+  "loyaltyCards",
   "attachments"
 ] as const;
 
@@ -31,6 +37,12 @@ export interface DnevnikData {
   settings: AppSettings;
   financeTransactions: FinanceTransaction[];
   savingsGoals: SavingsGoal[];
+  sharedPlans: SharedPlan[];
+  planTransactions: PlanTransaction[];
+  importantDates: ImportantDate[];
+  calendarEvents: CalendarEvent[];
+  documents: DocumentItem[];
+  loyaltyCards: LoyaltyCard[];
 }
 
 export interface DbStatus {

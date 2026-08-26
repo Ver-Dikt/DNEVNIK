@@ -1,7 +1,7 @@
 "use client";
 
-import { defaultKnowledge, defaultMembers, defaultSettings, defaultSpaces, loadDraft, loadEntries, loadFinanceTransactions, loadKnowledge, loadMembers, loadPreviewState, loadProjects, loadSavingsGoals, loadSettings, loadSpaces } from "@/lib/storage";
-import type { AppSettings, DiaryEntry, DraftState, FinanceTransaction, KnowledgeStore, Member, PreviewState, ProjectNode, SavingsGoal, Space } from "@/lib/types";
+import { defaultKnowledge, defaultMembers, defaultSettings, defaultSpaces, loadCalendarEvents, loadDocuments, loadDraft, loadEntries, loadFinanceTransactions, loadImportantDates, loadKnowledge, loadLoyaltyCards, loadMembers, loadPlanTransactions, loadPreviewState, loadProjects, loadSavingsGoals, loadSettings, loadSharedPlans, loadSpaces } from "@/lib/storage";
+import type { AppSettings, CalendarEvent, DiaryEntry, DocumentItem, DraftState, FinanceTransaction, ImportantDate, KnowledgeStore, LoyaltyCard, Member, PlanTransaction, PreviewState, ProjectNode, SavingsGoal, SharedPlan, Space } from "@/lib/types";
 import { dbName, dbVersion, migrationBackupKey, migrationMarkerKey, stores, type DnevnikData, type StoreName } from "@/db/schema";
 
 const singletonKeys: Partial<Record<StoreName, string>> = {
@@ -49,6 +49,30 @@ export async function saveFinanceDb(transactions: FinanceTransaction[]): Promise
 
 export async function saveSavingsDb(goals: SavingsGoal[]): Promise<void> {
   await replaceAll("savingsGoals", goals);
+}
+
+export async function saveSharedPlansDb(plans: SharedPlan[]): Promise<void> {
+  await replaceAll("sharedPlans", plans);
+}
+
+export async function savePlanTransactionsDb(transactions: PlanTransaction[]): Promise<void> {
+  await replaceAll("planTransactions", transactions);
+}
+
+export async function saveImportantDatesDb(dates: ImportantDate[]): Promise<void> {
+  await replaceAll("importantDates", dates);
+}
+
+export async function saveCalendarEventsDb(events: CalendarEvent[]): Promise<void> {
+  await replaceAll("calendarEvents", events);
+}
+
+export async function saveDocumentsDb(documents: DocumentItem[]): Promise<void> {
+  await replaceAll("documents", documents);
+}
+
+export async function saveLoyaltyCardsDb(cards: LoyaltyCard[]): Promise<void> {
+  await replaceAll("loyaltyCards", cards);
 }
 
 export async function saveKnowledgeDb(knowledge: KnowledgeStore): Promise<void> {
@@ -121,6 +145,12 @@ async function writeInitialData(db: IDBDatabase, data: DnevnikData): Promise<voi
       clearAndPutMany(tx.objectStore("members"), data.members);
       clearAndPutMany(tx.objectStore("financeTransactions"), data.financeTransactions);
       clearAndPutMany(tx.objectStore("savingsGoals"), data.savingsGoals);
+      clearAndPutMany(tx.objectStore("sharedPlans"), data.sharedPlans);
+      clearAndPutMany(tx.objectStore("planTransactions"), data.planTransactions);
+      clearAndPutMany(tx.objectStore("importantDates"), data.importantDates);
+      clearAndPutMany(tx.objectStore("calendarEvents"), data.calendarEvents);
+      clearAndPutMany(tx.objectStore("documents"), data.documents);
+      clearAndPutMany(tx.objectStore("loyaltyCards"), data.loyaltyCards);
       tx.objectStore("knowledge").put(data.knowledge, "knowledge");
       tx.objectStore("settings").put(data.settings, "settings");
       tx.objectStore("drafts").put(data.draft, "draft");
@@ -130,13 +160,19 @@ async function writeInitialData(db: IDBDatabase, data: DnevnikData): Promise<voi
 }
 
 async function readAllData(db: IDBDatabase): Promise<DnevnikData> {
-  const [entries, spaces, projects, members, financeTransactions, savingsGoals, knowledge, settings, draft, preview] = await Promise.all([
+  const [entries, spaces, projects, members, financeTransactions, savingsGoals, sharedPlans, planTransactions, importantDates, calendarEvents, documents, loyaltyCards, knowledge, settings, draft, preview] = await Promise.all([
     getAll<DiaryEntry>(db, "entries"),
     getAll<Space>(db, "spaces"),
     getAll<ProjectNode>(db, "projects"),
     getAll<Member>(db, "members"),
     getAll<FinanceTransaction>(db, "financeTransactions"),
     getAll<SavingsGoal>(db, "savingsGoals"),
+    getAll<SharedPlan>(db, "sharedPlans"),
+    getAll<PlanTransaction>(db, "planTransactions"),
+    getAll<ImportantDate>(db, "importantDates"),
+    getAll<CalendarEvent>(db, "calendarEvents"),
+    getAll<DocumentItem>(db, "documents"),
+    getAll<LoyaltyCard>(db, "loyaltyCards"),
     getSingleton<KnowledgeStore>(db, "knowledge", defaultKnowledge),
     getSingleton<AppSettings>(db, "settings", defaultSettings),
     getSingleton<DraftState | null>(db, "drafts", null, "draft"),
@@ -152,7 +188,13 @@ async function readAllData(db: IDBDatabase): Promise<DnevnikData> {
     preview,
     settings,
     financeTransactions,
-    savingsGoals
+    savingsGoals,
+    sharedPlans,
+    planTransactions,
+    importantDates,
+    calendarEvents,
+    documents,
+    loyaltyCards
   };
 }
 
@@ -217,7 +259,13 @@ function loadFallbackData(): DnevnikData {
     preview: loadPreviewState(),
     settings: loadSettings(),
     financeTransactions: loadFinanceTransactions(),
-    savingsGoals: loadSavingsGoals()
+    savingsGoals: loadSavingsGoals(),
+    sharedPlans: loadSharedPlans(),
+    planTransactions: loadPlanTransactions(),
+    importantDates: loadImportantDates(),
+    calendarEvents: loadCalendarEvents(),
+    documents: loadDocuments(),
+    loyaltyCards: loadLoyaltyCards()
   };
 }
 
@@ -232,6 +280,12 @@ function emptyData(): DnevnikData {
     preview: null,
     settings: defaultSettings,
     financeTransactions: [],
-    savingsGoals: []
+    savingsGoals: [],
+    sharedPlans: [],
+    planTransactions: [],
+    importantDates: [],
+    calendarEvents: [],
+    documents: [],
+    loyaltyCards: []
   };
 }

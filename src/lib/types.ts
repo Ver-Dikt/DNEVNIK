@@ -21,6 +21,7 @@ export type SchedulePreset =
   | "none";
 export type AssignedTo = "me" | "partner" | "shared";
 export type Visibility = "private" | "shared";
+export type Owner = AssignedTo;
 export type PurchaseStatus = "planned" | "researching" | "selected" | "ordered" | "purchased" | "cancelled";
 export type WishStatus = "saved" | "considering" | "planned" | "purchased" | "dismissed";
 export type DomainId = "music" | "home" | "work" | "studio_equipment" | "general";
@@ -42,7 +43,11 @@ export interface Member {
   name: string;
   role: "owner" | "partner";
   avatar: string;
+  birthday?: string;
+  notes?: string;
   createdAt: string;
+  updatedAt?: string;
+  revision?: number;
 }
 
 export interface Area {
@@ -80,6 +85,7 @@ export interface PurchaseDetails {
   status: PurchaseStatus;
   actualPrice?: number;
   purchasedAt?: string;
+  linkedWishId?: string;
   priceHistory?: Array<{
     amount: number;
     currency: string;
@@ -96,15 +102,129 @@ export interface WishDetails {
   store?: string;
   priority?: Priority;
   status: WishStatus;
+  owner?: Owner;
+  linkedPurchaseId?: string;
 }
 
 export interface Attachment {
   id: string;
-  type: "image" | "link";
+  type: "image" | "link" | "pdf" | "file";
   localUrl?: string;
   remoteUrl?: string;
   name?: string;
+  mimeType?: string;
+  size?: number;
+  blob?: Blob;
   createdAt?: string;
+}
+
+export interface SyncFields {
+  createdBy: Member["id"];
+  updatedBy?: Member["id"];
+  createdAt: string;
+  updatedAt: string;
+  revision: number;
+  visibility: Visibility;
+}
+
+export interface ProductMetadata {
+  title?: string;
+  imageUrl?: string;
+  price?: number;
+  currency?: string;
+  store?: string;
+}
+
+export interface ProductMetadataProvider {
+  fetch(url: string): Promise<ProductMetadata>;
+}
+
+export interface SharedPlan extends SyncFields {
+  id: string;
+  title: string;
+  description?: string;
+  type: "trip" | "purchase" | "repair" | "event" | "goal" | "custom";
+  status: "active" | "completed" | "archived";
+  targetAmount?: number;
+  currency?: string;
+  targetDate?: string;
+  linkedProjectId?: string;
+  linkedSpaceId?: string;
+}
+
+export interface PlanTransaction {
+  id: string;
+  planId: string;
+  type: "deposit" | "expense" | "adjustment";
+  amount: number;
+  currency: string;
+  note?: string;
+  createdBy: Member["id"];
+  createdAt: string;
+}
+
+export interface ImportantDate extends SyncFields {
+  id: string;
+  title: string;
+  date: string;
+  repeat: "yearly" | "none";
+  type: "birthday" | "anniversary" | "custom";
+  personName?: string;
+}
+
+export interface CalendarEvent extends SyncFields {
+  id: string;
+  title: string;
+  startDate: string;
+  endDate?: string;
+  startTime?: string;
+  endTime?: string;
+  allDay: boolean;
+  notes?: string;
+}
+
+export interface DocumentItem {
+  id: string;
+  title: string;
+  category?: "passport" | "insurance" | "ticket" | "certificate" | "contract" | "other";
+  attachments: Attachment[];
+  owner: Owner;
+  note?: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: Member["id"];
+  updatedBy?: Member["id"];
+  revision?: number;
+  visibility?: Visibility;
+}
+
+export interface LoyaltyCard {
+  id: string;
+  title: string;
+  barcodeValue: string;
+  barcodeFormat?: string;
+  imageUrl?: string;
+  owner: Owner;
+  createdAt: string;
+  updatedAt?: string;
+  createdBy?: Member["id"];
+  updatedBy?: Member["id"];
+  revision?: number;
+  visibility?: Visibility;
+}
+
+export interface TimeCapsule {
+  id: string;
+  title: string;
+  content: string;
+  unlockAt: string;
+  createdBy: Member["id"];
+  visibility: Visibility;
+}
+
+export interface SyncProvider {
+  pushChanges(changes: unknown[]): Promise<void>;
+  pullChanges(sinceRevision?: number): Promise<unknown[]>;
 }
 
 export interface DiaryEntry {

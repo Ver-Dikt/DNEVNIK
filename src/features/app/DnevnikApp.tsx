@@ -5,11 +5,12 @@ import { DesktopNav, MobileNav } from "@/components/navigation/AppNav";
 import { Button, Surface } from "@/components/ui/native";
 import { CaptureSheet } from "@/features/capture/CaptureSheet";
 import { EntryDetailSheet } from "@/features/entries/EntryDetailSheet";
-import { MoreView } from "@/features/more/MoreView";
+import { IdeasView, MoneyView, SearchView, SettingsView, TasksView, UsView, WorkView } from "@/features/app/DirectViews";
+import { LoyaltyCardsView, SharedPlansView } from "@/features/family/FamilyViews";
 import { PlanView } from "@/features/planner/PlanView";
 import { PurchasesView } from "@/features/purchases/PurchasesView";
-import { SpacesView } from "@/features/spaces/SpacesView";
-import type { MoreSection, ScreenId } from "@/features/app/types";
+import { WishlistView } from "@/features/wishlist/WishlistView";
+import type { ScreenId } from "@/features/app/types";
 import { addToSavingsGoal, createSavingsGoal, parseSavingsCommand } from "@/lib/finance";
 import { createEntryFromParsed } from "@/lib/mock-ai";
 import { parseSmartInput } from "@/lib/smart-parser";
@@ -45,14 +46,11 @@ const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export function DnevnikApp() {
   const data = useDnevnikData();
-  const [screen, setScreen] = useState<ScreenId>("plan");
-  const [moreSection, setMoreSection] = useState<MoreSection>(null);
-  const [ownerFilter, setOwnerFilter] = useState<"all" | "me" | "shared">("all");
+  const [screen, setScreen] = useState<ScreenId>("us");
+  const [ownerFilter, setOwnerFilter] = useState<"all" | "me" | "partner" | "shared">("all");
   const [selectedDate, setSelectedDate] = useState(todayIso());
   const [planMode, setPlanMode] = useState<"day" | "week" | "month">("day");
   const [purchaseView, setPurchaseView] = useState<PurchaseStatus>("planned");
-  const [selectedSpaceId, setSelectedSpaceId] = useState<string | undefined>();
-  const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>();
   const [captureOpen, setCaptureOpen] = useState(false);
   const [quickText, setQuickText] = useState("");
   const [preview, setPreview] = useState<AIParseResult | null>(null);
@@ -137,7 +135,6 @@ export function DnevnikApp() {
 
   function navigate(next: ScreenId) {
     setScreen(next);
-    setMoreSection(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -150,6 +147,50 @@ export function DnevnikApp() {
 
   function addEntries(entries: DiaryEntry[]) {
     data.setEntries((current) => [...entries, ...current]);
+  }
+
+  function createManualEntry(kind: DiaryEntry["kind"], patch: Partial<DiaryEntry> = {}) {
+    const now = new Date().toISOString();
+    const titleByKind: Record<DiaryEntry["kind"], string> = {
+      task: "Новая задача",
+      purchase: "Новая покупка",
+      wish: "Новая хотелка",
+      idea: "Новая идея",
+      note: "Новая заметка",
+      inbox: "Новая запись"
+    };
+    const entry: DiaryEntry = {
+      id: crypto.randomUUID(),
+      kind,
+      title: titleByKind[kind],
+      projectPath: [],
+      assignedTo: kind === "purchase" ? "shared" : "me",
+      visibility: kind === "purchase" ? "shared" : "private",
+      createdBy: "me",
+      updatedBy: "me",
+      status: kind === "purchase" || kind === "wish" ? "want_to_buy" : "active",
+      priority: "normal",
+      schedule: kind === "wish" ? "someday" : "none",
+      repeat: "none",
+      checklist: [],
+      purchase: kind === "purchase" ? { status: "planned", currency: data.settings.defaultCurrency, priceHistory: [] } : undefined,
+      wish: kind === "wish" ? { status: "saved", owner: "me", currency: data.settings.defaultCurrency } : undefined,
+      createdAt: now,
+      updatedAt: now,
+      revision: 1,
+      ...patch
+    };
+    data.setEntries((current) => [entry, ...current]);
+    setDetailId(entry.id);
+  }
+
+  function handleMainAdd() {
+    if (screen === "tasks") return createManualEntry("task");
+    if (screen === "work") return createManualEntry("task", { area: "Работа", projectPath: ["Работа"], domain: "work" });
+    if (screen === "purchases") return createManualEntry("purchase", { area: "Дом", projectPath: ["Дом"], assignedTo: "shared", visibility: "shared" });
+    if (screen === "wishlist") return createManualEntry("wish");
+    if (screen === "ideas") return createManualEntry("idea");
+    setCaptureOpen(true);
   }
 
   async function parseText() {
@@ -395,39 +436,49 @@ export function DnevnikApp() {
       <div className="min-w-0">
         {data.status.warning ? <Surface className="mb-4 p-3 text-sm text-[#a15c00]">{data.status.warning}</Surface> : null}
         {screen === "plan" ? (
-          <PlanView entries={data.entries} spaces={data.spaces} ownerFilter={ownerFilter} mode={planMode} selectedDate={selectedDate} onModeChange={setMode} onDateChange={setSelectedDate} onOwnerFilterChange={setOwnerFilter} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} onAdd={() => setCaptureOpen(true)} />
+          <PlanView calendarEvents={data.calendarEvents} entries={data.entries} importantDates={data.importantDates} members={data.members} planTransactions={data.planTransactions} sharedPlans={data.sharedPlans} spaces={data.spaces} ownerFilter={ownerFilter} mode={planMode} selectedDate={selectedDate} onModeChange={setMode} onDateChange={setSelectedDate} onOwnerFilterChange={setOwnerFilter} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} onAdd={() => setCaptureOpen(true)} />
         ) : null}
-        {screen === "spaces" ? (
-          <SpacesView
-            entries={data.entries}
-            projects={data.projects}
-            spaces={data.spaces}
-            selectedProjectId={selectedProjectId}
-            selectedSpaceId={selectedSpaceId}
-            onCreateProject={createProject}
-            onCreateSpace={createSpace}
-            onComplete={completeEntry}
-            onOpenEntry={(entry) => setDetailId(entry.id)}
-            onSelectProject={setSelectedProjectId}
-            onSelectSpace={(id) => {
-              setSelectedSpaceId(id);
-              setSelectedProjectId(undefined);
-            }}
-          />
+        {screen === "us" ? (
+          <UsView calendarEvents={data.calendarEvents} importantDates={data.importantDates} members={data.members} />
+        ) : null}
+        {screen === "tasks" ? (
+          <TasksView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={() => createManualEntry("task")} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
+        ) : null}
+        {screen === "work" ? (
+          <WorkView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={() => createManualEntry("task", { area: "Работа", projectPath: ["Работа"], domain: "work" })} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
         {screen === "purchases" ? (
-          <PurchasesView entries={data.entries} spaces={data.spaces} status={purchaseView} onStatusChange={setPurchaseView} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
+          <PurchasesView entries={data.entries} members={data.members} spaces={data.spaces} status={purchaseView} onAdd={() => createManualEntry("purchase", { area: "Дом", projectPath: ["Дом"], assignedTo: "shared", visibility: "shared" })} onStatusChange={setPurchaseView} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
-        {screen === "more" ? (
-          <MoreView activeSection={moreSection} entries={data.entries} members={data.members} query={query} settings={data.settings} spaces={data.spaces} onChangeQuery={setQuery} onChangeSection={setMoreSection} onChangeSettings={data.setSettings} onClearAll={data.clearEverything} onClearEntries={data.clearEntries} onComplete={completeEntry} onExport={exportData} onImport={importData} onNavigate={navigate} onOpenEntry={(entry) => setDetailId(entry.id)} />
+        {screen === "wishlist" ? (
+          <WishlistView entries={data.entries} members={data.members} spaces={data.spaces} onChangeEntries={data.setEntries} onCreateManual={() => createManualEntry("wish")} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
+        ) : null}
+        {screen === "sharedPlans" ? (
+          <SharedPlansView defaultCurrency={data.settings.defaultCurrency} plans={data.sharedPlans} transactions={data.planTransactions} onChangePlans={data.setSharedPlans} onChangeTransactions={data.setPlanTransactions} />
+        ) : null}
+        {screen === "money" ? (
+          <MoneyView entries={data.entries} members={data.members} sharedPlans={data.sharedPlans} spaces={data.spaces} onOpen={(entry) => setDetailId(entry.id)} />
+        ) : null}
+        {screen === "loyaltyCards" ? (
+          <LoyaltyCardsView cards={data.loyaltyCards} onChangeCards={data.setLoyaltyCards} />
+        ) : null}
+        {screen === "ideas" ? (
+          <IdeasView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={() => createManualEntry("idea")} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
+        ) : null}
+        {screen === "search" ? (
+          <SearchView calendarEvents={data.calendarEvents} entries={data.entries} importantDates={data.importantDates} loyaltyCards={data.loyaltyCards} members={data.members} query={query} sharedPlans={data.sharedPlans} spaces={data.spaces} onChangeQuery={setQuery} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
+        ) : null}
+        {screen === "settings" ? (
+          <SettingsView members={data.members} settings={data.settings} onChangeMembers={data.setMembers} onChangeSettings={data.setSettings} onClearAll={data.clearEverything} onClearEntries={data.clearEntries} onExport={exportData} onImport={importData} />
         ) : null}
       </div>
 
-      <MobileNav active={screen} onAdd={() => setCaptureOpen(true)} onChange={navigate} />
+      <MobileNav active={screen} onAdd={handleMainAdd} onChange={navigate} />
       {captureOpen ? <CaptureSheet text={quickText} isListening={isListening} isParsing={isParsing} preview={preview} voiceMessage={voiceMessage} onClose={closeCapture} onTextChange={setQuickText} onToggleVoice={toggleVoice} onParse={parseText} onSaveAll={() => savePreview()} onEditPreview={setEditingPreviewIndex} onRemovePreview={removePreviewItem} /> : null}
       {editingPreviewIndex !== null && preview?.items[editingPreviewIndex] ? (
         <EntryDetailSheet
           entry={normalizeSavedEntry(createEntryFromParsed(preview.items[editingPreviewIndex]), data.spaces, data.projects)}
+          members={data.members}
           projects={data.projects}
           spaces={data.spaces}
           onChange={(patch) => updatePreviewItem(editingPreviewIndex, patch)}
@@ -441,7 +492,7 @@ export function DnevnikApp() {
           onRemember={() => undefined}
         />
       ) : null}
-      {selectedEntry ? <EntryDetailSheet entry={selectedEntry} projects={data.projects} spaces={data.spaces} onChange={(patch) => updateEntry(selectedEntry.id, patch)} onCreateProject={createProject} onCreateSpace={createSpace} onClose={() => setDetailId(null)} onDelete={() => { deleteEntry(selectedEntry); setDetailId(null); }} onRemember={rememberCurrentEntry} /> : null}
+      {selectedEntry ? <EntryDetailSheet entry={selectedEntry} members={data.members} projects={data.projects} spaces={data.spaces} onChange={(patch) => updateEntry(selectedEntry.id, patch)} onCreateProject={createProject} onCreateSpace={createSpace} onClose={() => setDetailId(null)} onDelete={() => { deleteEntry(selectedEntry); setDetailId(null); }} onRemember={rememberCurrentEntry} /> : null}
       {toast ? <Toast title={toast.title} detail={toast.detail} action={toast.action} actionLabel={toast.actionLabel} /> : null}
     </main>
   );
