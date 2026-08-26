@@ -9,13 +9,19 @@ import type { AssignedTo, DiaryEntry, Member, ProductMetadata, Space, WishStatus
 
 type EntriesSetter = (next: DiaryEntry[] | ((current: DiaryEntry[]) => DiaryEntry[])) => void;
 
-export function WishlistView({ entries, members, onChangeEntries, onComplete, onCreateManual, onOpen }: { entries: DiaryEntry[]; members: Member[]; spaces: Space[]; onChangeEntries: EntriesSetter; onComplete: (entry: DiaryEntry) => void; onCreateManual: () => void; onOpen: (entry: DiaryEntry) => void }) {
-  const [owner, setOwner] = useState<AssignedTo | "all">("all");
+export function WishlistView({ entries, members, onChangeEntries, onComplete, onCreateManual, onOpen }: { entries: DiaryEntry[]; members: Member[]; spaces: Space[]; onChangeEntries: EntriesSetter; onComplete: (entry: DiaryEntry) => void; onCreateManual: (planned?: boolean) => void; onOpen: (entry: DiaryEntry) => void }) {
+  const [mode, setMode] = useState<"wishes" | "plans">("wishes");
+  const [owner, setOwner] = useState<AssignedTo>("shared");
   const [draftUrl, setDraftUrl] = useState("");
   const [draft, setDraft] = useState<ProductMetadata | null>(null);
   const [loading, setLoading] = useState(false);
   const [metadataFailed, setMetadataFailed] = useState(false);
-  const wishes = entries.filter((entry) => entry.kind === "wish" && wishStatus(entry) !== "dismissed" && (owner === "all" || (entry.wish?.owner ?? entry.assignedTo) === owner));
+  const wishes = entries.filter((entry) => {
+    if (entry.kind !== "wish" || wishStatus(entry) === "dismissed") return false;
+    const status = wishStatus(entry);
+    const inMode = mode === "plans" ? status === "planned" : status !== "planned";
+    return inMode && (entry.wish?.owner ?? entry.assignedTo) === owner;
+  });
 
   async function prepareUrl() {
     const url = draftUrl.trim();
@@ -38,14 +44,13 @@ export function WishlistView({ entries, members, onChangeEntries, onComplete, on
     const url = draftUrl.trim();
     if (!url) return;
     const now = new Date().toISOString();
-    const ownerValue = owner === "all" ? "me" : owner;
     const entry: DiaryEntry = {
       id: crypto.randomUUID(),
       kind: "wish",
       title: draft?.title?.trim() || "Хотелка по ссылке",
       projectPath: ["Семья"],
-      assignedTo: ownerValue,
-      visibility: ownerValue === "shared" ? "shared" : "private",
+      assignedTo: owner,
+      visibility: owner === "shared" ? "shared" : "private",
       createdBy: "me",
       updatedBy: "me",
       status: "want_to_buy",
@@ -58,7 +63,7 @@ export function WishlistView({ entries, members, onChangeEntries, onComplete, on
       totalPrice: draft?.price,
       currency: draft?.currency ?? "RUB",
       store: draft?.store ?? domainFromUrl(url),
-      wish: { status: "saved", owner: ownerValue, url, imageUrl: draft?.imageUrl, estimatedPrice: draft?.price, currency: draft?.currency ?? "RUB", store: draft?.store ?? domainFromUrl(url) },
+      wish: { status: mode === "plans" ? "planned" : "saved", owner, url, imageUrl: draft?.imageUrl, estimatedPrice: draft?.price, currency: draft?.currency ?? "RUB", store: draft?.store ?? domainFromUrl(url) },
       attachments: [{ id: crypto.randomUUID(), type: "link", remoteUrl: url, name: domainFromUrl(url), createdAt: now }],
       needsReview: metadataFailed,
       createdAt: now,
@@ -78,12 +83,12 @@ export function WishlistView({ entries, members, onChangeEntries, onComplete, on
           <p className="screen-eyebrow">На будущее</p>
           <h1 className="screen-title">Хотелки</h1>
         </div>
-        <Button aria-label="Добавить хотелку" className="icon-add-button" onClick={onCreateManual}><Plus size={30} /></Button>
+        <Button aria-label="Добавить хотелку" className="icon-add-button" onClick={() => onCreateManual(mode === "plans")}><Plus size={30} /></Button>
       </div>
-      <Segmented value="wishes" onChange={() => undefined} options={[{ label: "Хотелки", value: "wishes" }, { label: "Планы", value: "plans" }]} />
+      <Segmented value={mode} onChange={setMode} options={[{ label: "Хотелки", value: "wishes" }, { label: "Планы", value: "plans" }]} />
       <Surface className="grid gap-3 p-4">
         <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-          <Input placeholder="Вставь ссылку на товар" value={draftUrl} onChange={(event) => setDraftUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void prepareUrl(); }} />
+          <Input placeholder={mode === "plans" ? "Ссылка или идея для плана" : "Вставь ссылку на товар"} value={draftUrl} onChange={(event) => setDraftUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void prepareUrl(); }} />
           <Button disabled={loading} onClick={prepareUrl}><Plus size={18} />{loading ? "Читаю..." : "Превью"}</Button>
         </div>
         {draft ? (
@@ -98,12 +103,12 @@ export function WishlistView({ entries, members, onChangeEntries, onComplete, on
                 <Field label="Картинка"><Input value={draft.imageUrl ?? ""} onChange={(event) => setDraft({ ...draft, imageUrl: event.target.value })} /></Field>
                 <Field label="Магазин"><Input value={draft.store ?? ""} onChange={(event) => setDraft({ ...draft, store: event.target.value })} /></Field>
               </div>
-              <Button className="w-fit px-4" onClick={saveDraft}>Сохранить в хотелки</Button>
+              <Button className="w-fit px-4" onClick={saveDraft}>Сохранить в {mode === "plans" ? "планы" : "хотелки"}</Button>
             </div>
           </div>
         ) : null}
       </Surface>
-      <Segmented value={owner} onChange={setOwner} options={[{ label: "Все", value: "all" }, { label: ownerLabel("me", members), value: "me" }, { label: ownerLabel("partner", members), value: "partner" }, { label: "Общее", value: "shared" }]} />
+      <Segmented value={owner} onChange={setOwner} options={[{ label: "Общее", value: "shared" }, { label: ownerLabel("me", members), value: "me" }, { label: ownerLabel("partner", members), value: "partner" }]} />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {wishes.map((entry) => (
           <Surface className="overflow-hidden p-0" key={entry.id}>
@@ -135,7 +140,7 @@ export function WishlistView({ entries, members, onChangeEntries, onComplete, on
           </Surface>
         ))}
       </div>
-      {!wishes.length ? <Surface className="empty-state p-6 text-center text-sm text-[var(--muted)]"><div className="empty-icon"><Gift size={62} /></div><h2>Список пуст</h2><p>Киньте ссылку на товар или добавьте мечту вручную.</p><Button className="empty-cta" variant="primary" onClick={onCreateManual}>Добавить хотелку</Button></Surface> : null}
+      {!wishes.length ? <Surface className="empty-state p-6 text-center text-sm text-[var(--muted)]"><div className="empty-icon"><Gift size={62} /></div><h2>{mode === "plans" ? "Планов пока нет" : "Список пуст"}</h2><p>{mode === "plans" ? "Сюда попадут хотелки, которые уже решили превратить в план." : "Киньте ссылку на товар или добавьте мечту вручную."}</p><Button className="empty-cta" variant="primary" onClick={() => onCreateManual(mode === "plans")}>{mode === "plans" ? "Добавить план" : "Добавить хотелку"}</Button></Surface> : null}
     </div>
   );
 }

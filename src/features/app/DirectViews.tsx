@@ -46,12 +46,12 @@ export function UsView({ calendarEvents, importantDates, members, onOpenSettings
 }
 
 export function TasksView({ entries, members, spaces, onAdd, onComplete, onOpen }: EntryListProps) {
-  const [filter, setFilter] = useStateFilter();
+  const [filter, setFilter] = useOwnerFilter();
   const tasks = entries.filter((entry) => entry.kind === "task" && entry.status !== "done" && matchesAssignee(entry, filter));
   return (
     <div className="grid gap-4">
       <Header action={<IconAddButton label="Добавить задачу" onClick={() => onAdd?.()} />} eyebrow="Ответственность" title="Задачи" />
-      <Segmented value={filter} onChange={setFilter} options={[{ label: "Все", value: "all" }, { label: memberName(members, "me"), value: "me" }, { label: memberName(members, "partner"), value: "partner" }, { label: "Общее", value: "shared" }]} />
+      <Segmented value={filter} onChange={setFilter} options={[{ label: "Общее", value: "shared" }, { label: memberName(members, "me"), value: "me" }, { label: memberName(members, "partner"), value: "partner" }]} />
       <EntryList entries={tasks} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} emptyAction={onAdd} emptyButton="Добавить задачу" emptyIcon={<CheckCircle2 size={58} />} emptyTitle="Список дел на двоих" empty="Пишите, что нужно сделать. Задачу можно оставить себе или отдать партнёру." />
     </div>
   );
@@ -115,10 +115,20 @@ export function SearchView({ calendarEvents, entries, importantDates, loyaltyCar
   );
 }
 
-export function SettingsView({ members, onChangeMembers, onChangeSettings, onClearAll, onClearEntries, onExport, onImport, settings }: { members: Member[]; settings: AppSettings; onChangeMembers: (members: Member[] | ((current: Member[]) => Member[])) => void; onChangeSettings: (settings: AppSettings) => void; onClearAll: () => void; onClearEntries: () => void; onExport: () => void; onImport: (file: File) => void }) {
+export function SettingsView({ importantDates, members, onChangeImportantDates, onChangeMembers, onChangeSettings, onClearAll, onClearEntries, onExport, onImport, settings }: { importantDates: ImportantDate[]; members: Member[]; settings: AppSettings; onChangeImportantDates: (dates: ImportantDate[] | ((current: ImportantDate[]) => ImportantDate[])) => void; onChangeMembers: (members: Member[] | ((current: Member[]) => Member[])) => void; onChangeSettings: (settings: AppSettings) => void; onClearAll: () => void; onClearEntries: () => void; onExport: () => void; onImport: (file: File) => void }) {
   return (
     <div className="grid gap-4">
-      <Header eyebrow="Система" title="Настройки" />
+      <Header eyebrow="Мы" title="Настройки пары" />
+      <Surface className="pair-settings-card grid gap-4 p-4">
+        <h2 className="text-lg font-black">Наши данные</h2>
+        {members.map((member) => <MemberEditor key={member.id} member={member} onChange={(patch) => updateMember(member.id, patch, onChangeMembers)} />)}
+      </Surface>
+      <Surface className="pair-settings-card grid gap-0 overflow-hidden p-0">
+        <h2 className="px-4 pb-2 pt-4 text-lg font-black">Наши даты</h2>
+        <DateRow label="Вместе с" hint="от неё считаются дни вместе" value={dateValue(importantDates, "Вместе с")} onChange={(date) => upsertImportantDate(onChangeImportantDates, "Вместе с", date, "anniversary")} />
+        <DateRow label="Свадьба" hint="если планируете или уже была" value={dateValue(importantDates, "Свадьба")} onChange={(date) => upsertImportantDate(onChangeImportantDates, "Свадьба", date, "anniversary")} />
+        <DateRow label="Познакомились" hint="отдельная памятная дата" value={dateValue(importantDates, "Познакомились")} onChange={(date) => upsertImportantDate(onChangeImportantDates, "Познакомились", date, "anniversary")} />
+      </Surface>
       <Surface className="grid gap-3 p-4">
         <h2 className="text-lg font-black">Общие</h2>
         <Field label="Валюта"><Input value={settings.defaultCurrency} onChange={(event) => onChangeSettings({ ...settings, defaultCurrency: event.target.value })} /></Field>
@@ -126,10 +136,6 @@ export function SettingsView({ members, onChangeMembers, onChangeSettings, onCle
         <Field label="Внешний вид">
           <Segmented value={settings.appearance} onChange={(appearance) => onChangeSettings({ ...settings, appearance })} options={[{ label: "Система", value: "system" }, { label: "Светлая", value: "light" }, { label: "Тёмная", value: "dark" }]} />
         </Field>
-      </Surface>
-      <Surface className="grid gap-3 p-4">
-        <h2 className="text-lg font-black">Мы</h2>
-        {members.map((member) => <MemberEditor key={member.id} member={member} onChange={(patch) => updateMember(member.id, patch, onChangeMembers)} />)}
       </Surface>
       <Surface className="grid gap-3 p-4">
         <h2 className="text-lg font-black">Данные</h2>
@@ -177,18 +183,18 @@ function MiniStat({ label, value }: { label: string; value: string }) {
   return <div className="mini-stat"><b>{value}</b><span>{label}</span></div>;
 }
 
-function matchesAssignee(entry: DiaryEntry, filter: "all" | "me" | "shared" | "partner") {
-  if (filter === "all") return true;
+function matchesAssignee(entry: DiaryEntry, filter: "me" | "shared" | "partner") {
   if (filter === "me") return !entry.assignedTo || entry.assignedTo === "me";
-  return entry.assignedTo === filter;
+  if (filter === "shared") return entry.assignedTo === "shared" || entry.visibility === "shared";
+  return entry.assignedTo === "partner";
 }
 
 function matchesText(needle: string, ...values: Array<string | undefined>) {
   return values.filter(Boolean).join(" ").toLowerCase().includes(needle);
 }
 
-function useStateFilter() {
-  return useState<"all" | "me" | "shared" | "partner">("all");
+function useOwnerFilter() {
+  return useState<"me" | "shared" | "partner">("shared");
 }
 
 function MemberEditor({ member, onChange }: { member: Member; onChange: (patch: Partial<Member>) => void }) {
@@ -220,15 +226,40 @@ function initials(name: string) {
   return name.trim().slice(0, 1).toUpperCase() || "•";
 }
 
+function DateRow({ hint, label, onChange, value }: { hint: string; label: string; onChange: (value: string) => void; value: string }) {
+  return (
+    <label className="settings-list-row">
+      <span><b>{label}</b><small>{hint}</small></span>
+      <Input className="settings-date-input" type="date" value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
+function dateValue(dates: ImportantDate[], title: string) {
+  return dates.find((item) => item.title === title)?.date ?? "";
+}
+
+function upsertImportantDate(onChangeImportantDates: (dates: ImportantDate[] | ((current: ImportantDate[]) => ImportantDate[])) => void, title: string, value: string, type: ImportantDate["type"]) {
+  onChangeImportantDates((current) => {
+    const existing = current.find((item) => item.title === title);
+    if (!value) return current.filter((item) => item.title !== title);
+    const now = new Date().toISOString();
+    if (existing) {
+      return current.map((item) => item.id === existing.id ? { ...item, date: value, repeat: "yearly", type, updatedAt: now, revision: (item.revision ?? 1) + 1 } : item);
+    }
+    return [{ id: crypto.randomUUID(), title, date: value, repeat: "yearly", type, visibility: "shared", createdBy: "me", updatedBy: "me", createdAt: now, updatedAt: now, revision: 1 }, ...current];
+  });
+}
+
 function daysTogether(dates: ImportantDate[]) {
-  const start = dates.find((item) => item.type === "anniversary")?.date;
+  const start = dates.find((item) => item.title === "Вместе с")?.date;
   if (!start) return 0;
   const diff = Date.now() - new Date(`${start}T00:00:00`).getTime();
   return Math.max(0, Math.floor(diff / 86400000));
 }
 
 function daysToAnniversary(dates: ImportantDate[]) {
-  const start = dates.find((item) => item.type === "anniversary")?.date;
+  const start = dates.find((item) => item.title === "Вместе с")?.date;
   if (!start) return 365;
   const now = new Date();
   const monthDay = start.slice(5);

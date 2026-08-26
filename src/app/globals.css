@@ -497,6 +497,45 @@ html[data-theme="dark"] .badge {
   font-weight: 780;
 }
 
+.pair-settings-card {
+  border-radius: 28px;
+}
+
+.settings-list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 220px);
+  align-items: center;
+  gap: 14px;
+  border-top: 1px solid var(--line);
+  padding: 16px;
+}
+
+.settings-list-row:first-of-type {
+  border-top: 0;
+}
+
+.settings-list-row b,
+.settings-list-row small {
+  display: block;
+}
+
+.settings-list-row b {
+  color: var(--foreground);
+  font-size: 18px;
+  font-weight: 780;
+}
+
+.settings-list-row small {
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 620;
+}
+
+.settings-date-input {
+  min-height: 44px;
+}
+
 @media (max-width: 767px) {
   body {
     background: #101116;
@@ -629,6 +668,14 @@ html[data-theme="dark"] .badge {
     border-radius: 16px;
     font-size: 12px;
     gap: 3px;
+  }
+
+  .settings-list-row {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-date-input {
+    width: 100%;
   }
 
   .couple-stat-card {

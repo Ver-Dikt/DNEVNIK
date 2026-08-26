@@ -34,12 +34,12 @@ export function PlanView({
   planTransactions: PlanTransaction[];
   sharedPlans: SharedPlan[];
   spaces: Space[];
-  ownerFilter: "all" | "me" | "partner" | "shared";
+  ownerFilter: "me" | "partner" | "shared";
   mode: "day" | "week" | "month";
   selectedDate: string;
   onModeChange: (mode: "day" | "week" | "month") => void;
   onDateChange: (date: string) => void;
-  onOwnerFilterChange: (filter: "all" | "me" | "partner" | "shared") => void;
+  onOwnerFilterChange: (filter: "me" | "partner" | "shared") => void;
   onComplete: (entry: DiaryEntry) => void;
   onOpen: (entry: DiaryEntry) => void;
   onAdd: () => void;
@@ -110,10 +110,9 @@ export function PlanView({
       <Segmented
         onChange={onOwnerFilterChange}
         options={[
-          { label: "Все", value: "all" },
+          { label: "Общее", value: "shared" },
           { label: ownerLabel("me", members), value: "me" },
-          { label: ownerLabel("partner", members), value: "partner" },
-          { label: "Общее", value: "shared" }
+          { label: ownerLabel("partner", members), value: "partner" }
         ]}
         value={ownerFilter}
       />

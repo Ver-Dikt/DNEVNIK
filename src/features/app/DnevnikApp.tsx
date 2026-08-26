@@ -47,7 +47,7 @@ const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 export function DnevnikApp() {
   const data = useDnevnikData();
   const [screen, setScreen] = useState<ScreenId>("us");
-  const [ownerFilter, setOwnerFilter] = useState<"all" | "me" | "partner" | "shared">("all");
+  const [ownerFilter, setOwnerFilter] = useState<"me" | "partner" | "shared">("shared");
   const [selectedDate, setSelectedDate] = useState(todayIso());
   const [planMode, setPlanMode] = useState<"day" | "week" | "month">("day");
   const [purchaseView, setPurchaseView] = useState<PurchaseStatus>("planned");
@@ -451,7 +451,7 @@ export function DnevnikApp() {
           <PurchasesView entries={data.entries} members={data.members} spaces={data.spaces} status={purchaseView} onAdd={() => createManualEntry("purchase", { area: "Дом", projectPath: ["Дом"], assignedTo: "shared", visibility: "shared" })} onStatusChange={setPurchaseView} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
         {screen === "wishlist" ? (
-          <WishlistView entries={data.entries} members={data.members} spaces={data.spaces} onChangeEntries={data.setEntries} onCreateManual={() => createManualEntry("wish")} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
+          <WishlistView entries={data.entries} members={data.members} spaces={data.spaces} onChangeEntries={data.setEntries} onCreateManual={(planned) => createManualEntry("wish", planned ? { wish: { status: "planned", owner: "shared", currency: data.settings.defaultCurrency }, assignedTo: "shared", visibility: "shared" } : undefined)} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
         {screen === "sharedPlans" ? (
           <SharedPlansView defaultCurrency={data.settings.defaultCurrency} plans={data.sharedPlans} transactions={data.planTransactions} onChangePlans={data.setSharedPlans} onChangeTransactions={data.setPlanTransactions} />
@@ -472,7 +472,7 @@ export function DnevnikApp() {
           <SearchView calendarEvents={data.calendarEvents} entries={data.entries} importantDates={data.importantDates} loyaltyCards={data.loyaltyCards} members={data.members} query={query} sharedPlans={data.sharedPlans} spaces={data.spaces} onChangeQuery={setQuery} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
         {screen === "settings" ? (
-          <SettingsView members={data.members} settings={data.settings} onChangeMembers={data.setMembers} onChangeSettings={data.setSettings} onClearAll={data.clearEverything} onClearEntries={data.clearEntries} onExport={exportData} onImport={importData} />
+          <SettingsView importantDates={data.importantDates} members={data.members} settings={data.settings} onChangeImportantDates={data.setImportantDates} onChangeMembers={data.setMembers} onChangeSettings={data.setSettings} onClearAll={data.clearEverything} onClearEntries={data.clearEntries} onExport={exportData} onImport={importData} />
         ) : null}
       </div>
 
