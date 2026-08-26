@@ -1,4 +1,4 @@
-import { BriefcaseBusiness, CalendarDays, FileText, Gift, Heart, HeartHandshake, Lightbulb, ListTodo, Search, Settings, ShoppingCart, Target, WalletCards, type LucideProps } from "lucide-react";
+import { BriefcaseBusiness, CalendarDays, FileText, Gift, HeartHandshake, Lightbulb, ListTodo, Search, Settings, ShoppingCart, Target, WalletCards, type LucideProps } from "lucide-react";
 import type { ScreenId } from "@/features/app/types";
 
 const navItems: Array<{ id: ScreenId; label: string; icon: React.ComponentType<LucideProps> }> = [
@@ -17,18 +17,10 @@ const navItems: Array<{ id: ScreenId; label: string; icon: React.ComponentType<L
   { id: "settings", label: "Настройки", icon: Settings }
 ];
 
-const mobileNavItems: Array<{ id: ScreenId; label: string; icon: React.ComponentType<LucideProps> }> = [
-  { id: "tasks", label: "Задачи", icon: ListTodo },
-  { id: "plan", label: "Календарь", icon: CalendarDays },
-  { id: "wishlist", label: "Хотелки", icon: Gift },
-  { id: "documents", label: "Документы", icon: FileText },
-  { id: "us", label: "Мы", icon: Heart }
-];
-
 export function MobileNav({ active, onChange }: { active: ScreenId; onChange: (screen: ScreenId) => void }) {
   return (
-    <nav className="mobile-nav fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 border-t border-[var(--line)] bg-[rgba(17,19,24,.92)] px-2 pb-[calc(8px+env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl md:hidden">
-      {mobileNavItems.map((item) => <NavButton active={active === item.id} item={item} key={item.id} onClick={() => onChange(item.id)} />)}
+    <nav className="mobile-nav fixed inset-x-0 bottom-0 z-50 flex items-center gap-1 overflow-x-auto border-t border-[var(--line)] bg-[rgba(17,19,24,.92)] px-2 pb-[calc(8px+env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl md:hidden">
+      {navItems.map((item) => <NavButton active={active === item.id} item={item} key={item.id} onClick={() => onChange(item.id)} />)}
     </nav>
   );
 }

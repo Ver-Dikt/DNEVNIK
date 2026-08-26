@@ -613,9 +613,19 @@ html[data-theme="dark"] .badge {
 
   .mobile-nav {
     min-height: 86px;
+    scroll-padding-inline: 18px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+
+  .mobile-nav::-webkit-scrollbar {
+    display: none;
   }
 
   .mobile-nav button {
+    flex: 0 0 78px;
+    min-width: 78px;
     border-radius: 16px;
     font-size: 12px;
     gap: 3px;
