@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Plus } from "lucide-react";
+import { ExternalLink, Gift, Plus } from "lucide-react";
 import { useState } from "react";
 import { Badge, Button, Field, Input, Segmented, Select, Surface } from "@/components/ui/native";
 import { money, ownerLabel, wishStatus } from "@/features/shared/entry-utils";
@@ -73,13 +73,14 @@ export function WishlistView({ entries, members, onChangeEntries, onComplete, on
 
   return (
     <div className="grid gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="screen-header">
         <div>
-          <p className="text-sm font-bold text-[var(--muted)]">На будущее</p>
-          <h1 className="text-3xl font-black">Хотелки</h1>
+          <p className="screen-eyebrow">На будущее</p>
+          <h1 className="screen-title">Хотелки</h1>
         </div>
-        <Button onClick={onCreateManual}><Plus size={17} />Добавить вручную</Button>
+        <Button aria-label="Добавить хотелку" className="icon-add-button" onClick={onCreateManual}><Plus size={30} /></Button>
       </div>
+      <Segmented value="wishes" onChange={() => undefined} options={[{ label: "Хотелки", value: "wishes" }, { label: "Планы", value: "plans" }]} />
       <Surface className="grid gap-3 p-4">
         <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
           <Input placeholder="Вставь ссылку на товар" value={draftUrl} onChange={(event) => setDraftUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void prepareUrl(); }} />
@@ -134,7 +135,7 @@ export function WishlistView({ entries, members, onChangeEntries, onComplete, on
           </Surface>
         ))}
       </div>
-      {!wishes.length ? <Surface className="p-6 text-center text-sm text-[var(--muted)]">Сохраняй сюда вещи, которые хочется купить когда-нибудь.</Surface> : null}
+      {!wishes.length ? <Surface className="empty-state p-6 text-center text-sm text-[var(--muted)]"><div className="empty-icon"><Gift size={62} /></div><h2>Список пуст</h2><p>Киньте ссылку на товар или добавьте мечту вручную.</p><Button className="empty-cta" variant="primary" onClick={onCreateManual}>Добавить хотелку</Button></Surface> : null}
     </div>
   );
 }

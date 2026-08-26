@@ -1,31 +1,35 @@
-import { BriefcaseBusiness, CalendarDays, HeartHandshake, Lightbulb, ListTodo, Plus, Search, Settings, ShoppingCart, Sparkles, Target, WalletCards } from "lucide-react";
+import { BriefcaseBusiness, CalendarDays, FileText, Gift, Heart, HeartHandshake, Lightbulb, ListTodo, Search, Settings, ShoppingCart, Target, WalletCards, type LucideProps } from "lucide-react";
 import type { ScreenId } from "@/features/app/types";
 
-const navItems: Array<{ id: ScreenId; label: string; icon: React.ComponentType<{ size?: number }> }> = [
+const navItems: Array<{ id: ScreenId; label: string; icon: React.ComponentType<LucideProps> }> = [
   { id: "us", label: "Мы", icon: HeartHandshake },
-  { id: "plan", label: "План", icon: CalendarDays },
+  { id: "plan", label: "Календарь", icon: CalendarDays },
   { id: "tasks", label: "Задачи", icon: ListTodo },
   { id: "work", label: "Работа", icon: BriefcaseBusiness },
   { id: "purchases", label: "Покупки", icon: ShoppingCart },
-  { id: "wishlist", label: "Хотелки", icon: Sparkles },
+  { id: "wishlist", label: "Хотелки", icon: Gift },
   { id: "sharedPlans", label: "Общие планы", icon: Target },
   { id: "money", label: "Деньги", icon: WalletCards },
+  { id: "documents", label: "Документы", icon: FileText },
   { id: "loyaltyCards", label: "Карты", icon: WalletCards },
   { id: "ideas", label: "Идеи", icon: Lightbulb },
   { id: "search", label: "Поиск", icon: Search },
   { id: "settings", label: "Настройки", icon: Settings }
 ];
 
-export function MobileNav({ active, onAdd, onChange }: { active: ScreenId; onAdd: () => void; onChange: (screen: ScreenId) => void }) {
+const mobileNavItems: Array<{ id: ScreenId; label: string; icon: React.ComponentType<LucideProps> }> = [
+  { id: "tasks", label: "Задачи", icon: ListTodo },
+  { id: "plan", label: "Календарь", icon: CalendarDays },
+  { id: "wishlist", label: "Хотелки", icon: Gift },
+  { id: "documents", label: "Документы", icon: FileText },
+  { id: "us", label: "Мы", icon: Heart }
+];
+
+export function MobileNav({ active, onChange }: { active: ScreenId; onChange: (screen: ScreenId) => void }) {
   return (
-    <>
-      <button aria-label="Добавить" className="fixed bottom-[calc(84px+env(safe-area-inset-bottom))] right-4 z-[55] grid h-14 w-14 place-items-center rounded-full bg-[#16191f] text-white shadow-xl md:hidden" onClick={onAdd} type="button">
-        <Plus size={25} />
-      </button>
-      <nav className="mobile-nav fixed inset-x-0 bottom-0 z-50 mx-auto mb-[calc(10px+env(safe-area-inset-bottom))] flex w-[min(96vw,520px)] items-center gap-1 overflow-x-auto rounded-[24px] border border-black/5 bg-white/[.9] px-2 py-2 shadow-[0_20px_60px_rgba(24,35,52,.16)] backdrop-blur-xl md:hidden">
-        {navItems.map((item) => <NavButton active={active === item.id} item={item} key={item.id} onClick={() => onChange(item.id)} />)}
-      </nav>
-    </>
+    <nav className="mobile-nav fixed inset-x-0 bottom-0 z-50 grid grid-cols-5 border-t border-[var(--line)] bg-[rgba(17,19,24,.92)] px-2 pb-[calc(8px+env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl md:hidden">
+      {mobileNavItems.map((item) => <NavButton active={active === item.id} item={item} key={item.id} onClick={() => onChange(item.id)} />)}
+    </nav>
   );
 }
 
@@ -54,8 +58,8 @@ export function DesktopNav({ active, onChange }: { active: ScreenId; onChange: (
 function NavButton({ active, item, onClick }: { active: boolean; item: (typeof navItems)[number]; onClick: () => void }) {
   const Icon = item.icon;
   return (
-    <button aria-current={active ? "page" : undefined} className={`grid min-h-12 min-w-[68px] place-items-center rounded-2xl px-2 text-[11px] font-bold ${active ? "bg-black/[.06] text-[#111318]" : "text-[var(--muted)]"}`} onClick={onClick} type="button">
-      <Icon size={19} />
+    <button aria-current={active ? "page" : undefined} className={`grid min-h-14 place-items-center rounded-2xl px-1 text-[11px] font-bold transition ${active ? "text-[var(--foreground)]" : "text-[var(--muted)]"}`} onClick={onClick} type="button">
+      <Icon size={22} strokeWidth={active ? 2.8 : 2.1} />
       <span>{item.label}</span>
     </button>
   );

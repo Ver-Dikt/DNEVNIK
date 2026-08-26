@@ -160,7 +160,8 @@ export const defaultSettings: AppSettings = {
   askBeforeCreatingProject: true,
   learnFromCorrections: true,
   recentContextMinutes: 20,
-  appearance: "system"
+  appearance: "dark",
+  planMode: "month"
 };
 
 export function loadEntries(): DiaryEntry[] {

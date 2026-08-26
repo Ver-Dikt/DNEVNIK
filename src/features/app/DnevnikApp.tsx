@@ -6,7 +6,7 @@ import { Button, Surface } from "@/components/ui/native";
 import { CaptureSheet } from "@/features/capture/CaptureSheet";
 import { EntryDetailSheet } from "@/features/entries/EntryDetailSheet";
 import { IdeasView, MoneyView, SearchView, SettingsView, TasksView, UsView, WorkView } from "@/features/app/DirectViews";
-import { LoyaltyCardsView, SharedPlansView } from "@/features/family/FamilyViews";
+import { DocumentsHubView, LoyaltyCardsView, SharedPlansView } from "@/features/family/FamilyViews";
 import { PlanView } from "@/features/planner/PlanView";
 import { PurchasesView } from "@/features/purchases/PurchasesView";
 import { WishlistView } from "@/features/wishlist/WishlistView";
@@ -114,12 +114,21 @@ export function DnevnikApp() {
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.register(`${appBasePath}/sw.js`, { scope: `${appBasePath || "/"}` }).then((registration) => {
+    const swUrl = `${appBasePath}/sw.js`;
+    const swScope = `${appBasePath || ""}/`;
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+    navigator.serviceWorker.register(swUrl, { scope: swScope }).then((registration) => {
+      void registration.update();
       registration.addEventListener("updatefound", () => {
         const worker = registration.installing;
         worker?.addEventListener("statechange", () => {
           if (worker.state === "installed" && navigator.serviceWorker.controller) {
-            setToast({ title: "Доступно обновление", detail: "Можно сразу обновить приложение.", actionLabel: "Обновить", action: () => window.location.reload() });
+            setToast({ title: "Доступно обновление", detail: "Можно сразу обновить приложение.", actionLabel: "Обновить", action: () => worker.postMessage({ type: "SKIP_WAITING" }) });
           }
         });
       });
@@ -182,15 +191,6 @@ export function DnevnikApp() {
     };
     data.setEntries((current) => [entry, ...current]);
     setDetailId(entry.id);
-  }
-
-  function handleMainAdd() {
-    if (screen === "tasks") return createManualEntry("task");
-    if (screen === "work") return createManualEntry("task", { area: "Работа", projectPath: ["Работа"], domain: "work" });
-    if (screen === "purchases") return createManualEntry("purchase", { area: "Дом", projectPath: ["Дом"], assignedTo: "shared", visibility: "shared" });
-    if (screen === "wishlist") return createManualEntry("wish");
-    if (screen === "ideas") return createManualEntry("idea");
-    setCaptureOpen(true);
   }
 
   async function parseText() {
@@ -439,7 +439,7 @@ export function DnevnikApp() {
           <PlanView calendarEvents={data.calendarEvents} entries={data.entries} importantDates={data.importantDates} members={data.members} planTransactions={data.planTransactions} sharedPlans={data.sharedPlans} spaces={data.spaces} ownerFilter={ownerFilter} mode={planMode} selectedDate={selectedDate} onModeChange={setMode} onDateChange={setSelectedDate} onOwnerFilterChange={setOwnerFilter} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} onAdd={() => setCaptureOpen(true)} />
         ) : null}
         {screen === "us" ? (
-          <UsView calendarEvents={data.calendarEvents} importantDates={data.importantDates} members={data.members} />
+          <UsView calendarEvents={data.calendarEvents} importantDates={data.importantDates} members={data.members} onOpenSettings={() => navigate("settings")} />
         ) : null}
         {screen === "tasks" ? (
           <TasksView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={() => createManualEntry("task")} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
@@ -459,6 +459,9 @@ export function DnevnikApp() {
         {screen === "money" ? (
           <MoneyView entries={data.entries} members={data.members} sharedPlans={data.sharedPlans} spaces={data.spaces} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
+        {screen === "documents" ? (
+          <DocumentsHubView documents={data.documents} loyaltyCards={data.loyaltyCards} onChangeDocuments={data.setDocuments} onChangeLoyaltyCards={data.setLoyaltyCards} />
+        ) : null}
         {screen === "loyaltyCards" ? (
           <LoyaltyCardsView cards={data.loyaltyCards} onChangeCards={data.setLoyaltyCards} />
         ) : null}
@@ -473,7 +476,7 @@ export function DnevnikApp() {
         ) : null}
       </div>
 
-      <MobileNav active={screen} onAdd={handleMainAdd} onChange={navigate} />
+      <MobileNav active={screen} onChange={navigate} />
       {captureOpen ? <CaptureSheet text={quickText} isListening={isListening} isParsing={isParsing} preview={preview} voiceMessage={voiceMessage} onClose={closeCapture} onTextChange={setQuickText} onToggleVoice={toggleVoice} onParse={parseText} onSaveAll={() => savePreview()} onEditPreview={setEditingPreviewIndex} onRemovePreview={removePreviewItem} /> : null}
       {editingPreviewIndex !== null && preview?.items[editingPreviewIndex] ? (
         <EntryDetailSheet

@@ -1,8 +1,8 @@
 "use client";
 
-import { Archive, CalendarDays, Check, FileText, Gift, Maximize2, Plus, X } from "lucide-react";
+import { Archive, CalendarDays, Camera, Check, CreditCard, FileText, Gift, Maximize2, Plus, Upload, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { Badge, Button, Input, Select, Surface } from "@/components/ui/native";
+import { Badge, Button, Input, Segmented, Select, Surface } from "@/components/ui/native";
 import { calculateSharedPlan, money } from "@/features/family/shared-plan-utils";
 import type { CalendarEvent, DocumentItem, ImportantDate, LoyaltyCard, Owner, PlanTransaction, SharedPlan } from "@/lib/types";
 
@@ -157,10 +157,36 @@ export function ImportantDatesView({ dates, events, onChangeDates, onChangeEvent
   );
 }
 
-export function DocumentsView({ documents, onChangeDocuments }: { documents: DocumentItem[]; onChangeDocuments: Setter<DocumentItem> }) {
+export function DocumentsHubView({ documents, loyaltyCards, onChangeDocuments, onChangeLoyaltyCards }: { documents: DocumentItem[]; loyaltyCards: LoyaltyCard[]; onChangeDocuments: Setter<DocumentItem>; onChangeLoyaltyCards: Setter<LoyaltyCard> }) {
+  const [mode, setMode] = useState<"documents" | "cards">("documents");
+  return (
+    <div className="grid gap-5">
+      <div className="screen-header">
+        <div>
+          <p className="screen-eyebrow">Офлайн-хранилище</p>
+          <h1 className="screen-title">Документы</h1>
+        </div>
+      </div>
+      <Segmented
+        value={mode}
+        onChange={setMode}
+        options={[
+          { label: "Документы", value: "documents" },
+          { label: "Карты", value: "cards" }
+        ]}
+      />
+      {mode === "documents" ? <DocumentsView documents={documents} onChangeDocuments={onChangeDocuments} embedded /> : null}
+      {mode === "cards" ? <LoyaltyCardsView cards={loyaltyCards} onChangeCards={onChangeLoyaltyCards} embedded /> : null}
+    </div>
+  );
+}
+
+export function DocumentsView({ documents, onChangeDocuments, embedded = false }: { documents: DocumentItem[]; onChangeDocuments: Setter<DocumentItem>; embedded?: boolean }) {
   const [title, setTitle] = useState("");
   const [owner, setOwner] = useState<Owner>("shared");
   const [category, setCategory] = useState<DocumentItem["category"]>("other");
+  const cameraInputId = "document-camera-input";
+  const fileInputId = "document-file-input";
 
   function addDocument(file?: File) {
     if (!title.trim() && !file) return;
@@ -172,18 +198,24 @@ export function DocumentsView({ documents, onChangeDocuments }: { documents: Doc
 
   return (
     <div className="grid gap-4">
-      <Header eyebrow="Хранить" title="Документы" />
-      <Surface className="grid gap-3 p-4">
+      {!embedded ? <Header eyebrow="Хранить" title="Документы" /> : null}
+      <Surface className="document-actions grid gap-3 p-4">
         <div className="grid gap-2 sm:grid-cols-[1fr_150px_150px_auto]">
           <Input placeholder="Паспорт, страховка, билет" value={title} onChange={(event) => setTitle(event.target.value)} />
           <Select value={category} onChange={(event) => setCategory(event.target.value as DocumentItem["category"])}><option value="passport">Паспорт</option><option value="insurance">Страховка</option><option value="ticket">Билет</option><option value="certificate">Справка</option><option value="contract">Договор</option><option value="other">Другое</option></Select>
           <OwnerSelect value={owner} onChange={setOwner} />
-          <label className="button button-plain"><Plus size={18} />Файл<input className="hidden" type="file" accept="image/*,.pdf" onChange={(event) => { addDocument(event.target.files?.[0]); event.target.value = ""; }} /></label>
+          <Button onClick={() => addDocument()}><Plus size={18} />Создать</Button>
         </div>
-        <p className="text-sm text-[var(--muted)]">Файлы хранятся локально в IndexedDB. В web/PWA это не уровень защиты Face ID.</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="button button-primary document-cta" htmlFor={cameraInputId}><Camera size={19} />Сфотографировать</label>
+          <label className="button button-plain document-cta" htmlFor={fileInputId}><Upload size={19} />Выбрать файл</label>
+        </div>
+        <input className="hidden" id={cameraInputId} type="file" accept="image/*" capture="environment" onChange={(event) => { addDocument(event.target.files?.[0]); event.target.value = ""; }} />
+        <input className="hidden" id={fileInputId} type="file" accept="image/*,.pdf" onChange={(event) => { addDocument(event.target.files?.[0]); event.target.value = ""; }} />
+        <p className="text-sm text-[var(--muted)]">Файлы лежат локально в приложении и откроются без интернета.</p>
       </Surface>
       {documents.map((item) => <DocumentRow key={item.id} item={item} onDelete={() => onChangeDocuments((current) => current.filter((document) => document.id !== item.id))} />)}
-      {!documents.length ? <Empty text="Документы добавляются вручную и работают офлайн." /> : null}
+      {!documents.length ? <Empty icon={<FileText size={56} />} title="Здесь будут файлы" text="Билеты, страховки и важные бумаги можно сохранить на устройство." /> : null}
     </div>
   );
 }
@@ -193,7 +225,7 @@ function DocumentRow({ item, onDelete }: { item: DocumentItem; onDelete: () => v
   return <FamilyRow icon={<FileText size={18} />} title={item.title} meta={`${item.category ?? "документ"} · ${item.owner} · ${item.attachments.length} файл.`} onDelete={onDelete}>{previewUrl ? <a className="button button-plain mt-2 w-fit" href={previewUrl} target="_blank">Открыть файл</a> : null}</FamilyRow>;
 }
 
-export function LoyaltyCardsView({ cards, onChangeCards }: { cards: LoyaltyCard[]; onChangeCards: Setter<LoyaltyCard> }) {
+export function LoyaltyCardsView({ cards, onChangeCards, embedded = false }: { cards: LoyaltyCard[]; onChangeCards: Setter<LoyaltyCard>; embedded?: boolean }) {
   const [title, setTitle] = useState("");
   const [barcodeValue, setBarcodeValue] = useState("");
   const [owner, setOwner] = useState<Owner>("shared");
@@ -209,7 +241,7 @@ export function LoyaltyCardsView({ cards, onChangeCards }: { cards: LoyaltyCard[
 
   return (
     <div className="grid gap-4">
-      <Header eyebrow="Хранить" title="Карты" />
+      {!embedded ? <Header eyebrow="Хранить" title="Карты" /> : null}
       <Surface className="grid gap-3 p-4">
         <div className="grid gap-2 sm:grid-cols-[1fr_1fr_150px_auto]">
           <Input placeholder="Магазин" value={title} onChange={(event) => setTitle(event.target.value)} />
@@ -221,7 +253,7 @@ export function LoyaltyCardsView({ cards, onChangeCards }: { cards: LoyaltyCard[
       <div className="grid gap-3 sm:grid-cols-2">
         {cards.map((card) => <button className="text-left" key={card.id} onClick={() => setSelected(card)} type="button"><Surface className="grid gap-3 p-4"><div className="flex items-center justify-between"><h2 className="text-lg font-black">{card.title}</h2><Maximize2 size={18} /></div><Barcode value={card.barcodeValue} /><p className="text-sm text-[var(--muted)]">{card.owner}</p></Surface></button>)}
       </div>
-      {!cards.length ? <Empty text="Сохрани карты лояльности, чтобы они открывались офлайн." /> : null}
+      {!cards.length ? <Empty icon={<CreditCard size={56} />} title="Карт пока нет" text="Сохрани карты лояльности и штрих-коды, чтобы быстро открыть их офлайн." /> : null}
       {selected ? <div className="fixed inset-0 z-[85] grid place-items-center bg-white p-5 text-black"><button aria-label="Закрыть" className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-black/10" onClick={() => setSelected(null)} type="button"><X size={20} /></button><div className="grid w-full max-w-lg gap-6 text-center"><h1 className="text-3xl font-black">{selected.title}</h1><Barcode large value={selected.barcodeValue} /><div className="break-all font-mono text-lg">{selected.barcodeValue}</div><Button onClick={() => undefined}>Яркость на максимум вручную</Button></div></div> : null}
     </div>
   );
@@ -236,8 +268,8 @@ function Header({ eyebrow, title }: { eyebrow: string; title: string }) {
   return <div><p className="text-sm font-bold text-[var(--muted)]">{eyebrow}</p><h1 className="text-3xl font-black">{title}</h1></div>;
 }
 
-function Empty({ text }: { text: string }) {
-  return <Surface className="p-6 text-center text-sm text-[var(--muted)]">{text}</Surface>;
+function Empty({ icon, text, title }: { icon?: React.ReactNode; text: string; title?: string }) {
+  return <Surface className="empty-state p-6 text-center text-sm text-[var(--muted)]">{icon ? <div className="empty-icon">{icon}</div> : null}{title ? <h2>{title}</h2> : null}<p>{text}</p></Surface>;
 }
 
 function FamilyRow({ children, icon, meta, onDelete, title }: { children?: React.ReactNode; icon: React.ReactNode; meta: string; onDelete: () => void; title: string }) {

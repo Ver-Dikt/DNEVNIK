@@ -1,25 +1,36 @@
 "use client";
 
-import { CalendarHeart, HeartHandshake, Plus } from "lucide-react";
+import { CalendarHeart, CheckCircle2, ChevronRight, HeartHandshake, Plus } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Button, Field, Input, Segmented, Surface } from "@/components/ui/native";
 import { EntryCard } from "@/features/entries/EntryCard";
 import { calculateBudget } from "@/lib/finance";
 import type { AppSettings, CalendarEvent, DiaryEntry, ImportantDate, LoyaltyCard, Member, SharedPlan, Space } from "@/lib/types";
 
-export function UsView({ calendarEvents, importantDates, members }: { calendarEvents: CalendarEvent[]; importantDates: ImportantDate[]; members: Member[] }) {
-  const birthdays = importantDates.filter((item) => item.type === "birthday");
-  const memberBirthdays = members.filter((member) => member.birthday);
-  const anniversaries = importantDates.filter((item) => item.type === "anniversary");
+export function UsView({ calendarEvents, importantDates, members, onOpenSettings }: { calendarEvents: CalendarEvent[]; importantDates: ImportantDate[]; members: Member[]; onOpenSettings: () => void }) {
   const nextDate = [...importantDates].sort((a, b) => a.date.localeCompare(b.date))[0];
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-5">
       <Header eyebrow="Общее пространство" title="Мы" />
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Surface className="summary-card"><span>Профили</span><b>{members.map((member) => member.name).join(" + ")}</b><small>Настраиваются в Настройках</small></Surface>
-        <Surface className="summary-card"><span>Дни рождения</span><b>{birthdays.length + memberBirthdays.length || "Пока нет"}</b><small>{memberBirthdays.length ? members.filter((member) => member.birthday).map((member) => member.name).join(", ") : "Заполни в Настройках"}</small></Surface>
-        <Surface className="summary-card"><span>Годовщины</span><b>{anniversaries.length || "Пока нет"}</b><small>Потом посчитаем дни вместе</small></Surface>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Surface className="couple-stat-card"><b>{daysTogether(importantDates)}</b><span>дней вместе</span></Surface>
+        <Surface className="couple-stat-card accent"><b>{daysToAnniversary(importantDates)}</b><span>до годовщины</span></Surface>
       </div>
+      <Surface className="summary-panel p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-black uppercase text-[var(--muted)]">Наши данные</p>
+            <h2 className="mt-2 text-xl font-black">{members.map((member) => member.name).join(" + ")}</h2>
+          </div>
+          <button className="text-sm font-black text-[var(--accent)]" onClick={onOpenSettings} type="button">Смотреть ›</button>
+        </div>
+        <div className="mt-5 grid grid-cols-4 gap-3">
+          <MiniStat label="хотелок" value="0" />
+          <MiniStat label="поездок" value="0" />
+          <MiniStat label="планов" value="0" />
+          <MiniStat label="файлов" value="0" />
+        </div>
+      </Surface>
       <Surface className="grid gap-3 p-4">
         <div className="flex items-center gap-3"><HeartHandshake size={20} /><h2 className="text-lg font-black">Нас двое</h2></div>
         {members.map((member) => <div className="rounded-2xl bg-black/[.035] p-3" key={member.id}><div className="font-black">{member.avatar} {member.name}</div><div className="text-sm text-[var(--muted)]">{member.role === "owner" ? "Твой профиль" : "Профиль партнёра"}{member.birthday ? ` · ${member.birthday}` : ""}</div></div>)}
@@ -29,6 +40,7 @@ export function UsView({ calendarEvents, importantDates, members }: { calendarEv
         {nextDate ? <p className="font-bold">{nextDate.title} · {nextDate.date}</p> : <p className="text-sm text-[var(--muted)]">Пока нет важных дат.</p>}
         {calendarEvents.slice(0, 3).map((event) => <p className="text-sm text-[var(--muted)]" key={event.id}>{event.title} · {event.startDate}</p>)}
       </Surface>
+      <button className="settings-row" onClick={onOpenSettings} type="button"><span>Настройки пары</span><ChevronRight size={22} /></button>
     </div>
   );
 }
@@ -38,9 +50,9 @@ export function TasksView({ entries, members, spaces, onAdd, onComplete, onOpen 
   const tasks = entries.filter((entry) => entry.kind === "task" && entry.status !== "done" && matchesAssignee(entry, filter));
   return (
     <div className="grid gap-4">
-      <Header action={<Button onClick={onAdd}><Plus size={17} />Добавить</Button>} eyebrow="Ответственность" title="Задачи" />
-      <Segmented value={filter} onChange={setFilter} options={[{ label: "Все", value: "all" }, { label: memberName(members, "me"), value: "me" }, { label: "Общие", value: "shared" }, { label: memberName(members, "partner"), value: "partner" }]} />
-      <EntryList entries={tasks} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} />
+      <Header action={<IconAddButton label="Добавить задачу" onClick={() => onAdd?.()} />} eyebrow="Ответственность" title="Задачи" />
+      <Segmented value={filter} onChange={setFilter} options={[{ label: "Все", value: "all" }, { label: memberName(members, "me"), value: "me" }, { label: memberName(members, "partner"), value: "partner" }, { label: "Общее", value: "shared" }]} />
+      <EntryList entries={tasks} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} emptyAction={onAdd} emptyButton="Добавить задачу" emptyIcon={<CheckCircle2 size={58} />} emptyTitle="Список дел на двоих" empty="Пишите, что нужно сделать. Задачу можно оставить себе или отдать партнёру." />
     </div>
   );
 }
@@ -49,8 +61,8 @@ export function WorkView({ entries, members, spaces, onAdd, onComplete, onOpen }
   const work = entries.filter((entry) => entry.area === "Работа" || entry.domain === "work" || entry.spaceId === "работа");
   return (
     <div className="grid gap-4">
-      <Header action={<Button onClick={onAdd}><Plus size={17} />Добавить</Button>} eyebrow="Твои темы" title="Работа" />
-      <EntryList entries={work} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} empty="Рабочих записей пока нет." />
+      <Header action={<IconAddButton label="Добавить" onClick={() => onAdd?.()} />} eyebrow="Твои темы" title="Работа" />
+      <EntryList entries={work} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} empty="Рабочих записей пока нет." emptyAction={onAdd} emptyButton="Добавить запись" />
     </div>
   );
 }
@@ -58,8 +70,8 @@ export function WorkView({ entries, members, spaces, onAdd, onComplete, onOpen }
 export function IdeasView({ entries, members, spaces, onAdd, onComplete, onOpen }: EntryListProps) {
   return (
     <div className="grid gap-4">
-      <Header action={<Button onClick={onAdd}><Plus size={17} />Добавить</Button>} eyebrow="Наброски" title="Идеи" />
-      <EntryList entries={entries.filter((entry) => entry.kind === "idea")} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} empty="Идей пока нет." />
+      <Header action={<IconAddButton label="Добавить" onClick={() => onAdd?.()} />} eyebrow="Наброски" title="Идеи" />
+      <EntryList entries={entries.filter((entry) => entry.kind === "idea")} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} empty="Идей пока нет." emptyAction={onAdd} emptyButton="Добавить идею" />
     </div>
   );
 }
@@ -150,11 +162,19 @@ type EntryListProps = {
 };
 
 function Header({ action, eyebrow, title }: { action?: ReactNode; eyebrow: string; title: string }) {
-  return <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-sm font-bold text-[var(--muted)]">{eyebrow}</p><h1 className="text-3xl font-black">{title}</h1></div>{action}</div>;
+  return <div className="screen-header"><div><p className="screen-eyebrow">{eyebrow}</p><h1 className="screen-title">{title}</h1></div>{action}</div>;
 }
 
-function EntryList({ empty = "Здесь пока пусто.", entries, members, onComplete, onOpen, spaces }: EntryListProps & { empty?: string }) {
-  return entries.length ? entries.map((entry) => <EntryCard entry={entry} key={entry.id} members={members} spaces={spaces} onComplete={() => onComplete(entry)} onOpen={() => onOpen(entry)} />) : <Surface className="p-6 text-center text-sm text-[var(--muted)]">{empty}</Surface>;
+function EntryList({ empty = "Здесь пока пусто.", emptyAction, emptyButton = "Добавить", emptyIcon, emptyTitle = "Пока пусто", entries, members, onComplete, onOpen, spaces }: EntryListProps & { empty?: string; emptyAction?: () => void; emptyButton?: string; emptyIcon?: ReactNode; emptyTitle?: string }) {
+  return entries.length ? entries.map((entry) => <EntryCard entry={entry} key={entry.id} members={members} spaces={spaces} onComplete={() => onComplete(entry)} onOpen={() => onOpen(entry)} />) : <Surface className="empty-state p-6 text-center text-sm text-[var(--muted)]">{emptyIcon ? <div className="empty-icon">{emptyIcon}</div> : null}<h2>{emptyTitle}</h2><p>{empty}</p>{emptyAction ? <Button className="empty-cta" variant="primary" onClick={emptyAction}>{emptyButton}</Button> : null}</Surface>;
+}
+
+function IconAddButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return <Button aria-label={label} className="icon-add-button" onClick={onClick}><Plus size={30} /></Button>;
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return <div className="mini-stat"><b>{value}</b><span>{label}</span></div>;
 }
 
 function matchesAssignee(entry: DiaryEntry, filter: "all" | "me" | "shared" | "partner") {
@@ -198,4 +218,22 @@ function memberName(members: Member[], id: Member["id"]) {
 
 function initials(name: string) {
   return name.trim().slice(0, 1).toUpperCase() || "•";
+}
+
+function daysTogether(dates: ImportantDate[]) {
+  const start = dates.find((item) => item.type === "anniversary")?.date;
+  if (!start) return 0;
+  const diff = Date.now() - new Date(`${start}T00:00:00`).getTime();
+  return Math.max(0, Math.floor(diff / 86400000));
+}
+
+function daysToAnniversary(dates: ImportantDate[]) {
+  const start = dates.find((item) => item.type === "anniversary")?.date;
+  if (!start) return 365;
+  const now = new Date();
+  const monthDay = start.slice(5);
+  let next = new Date(`${now.getFullYear()}-${monthDay}T00:00:00`);
+  if (Number.isNaN(next.getTime())) return 365;
+  if (next.getTime() < now.getTime()) next = new Date(`${now.getFullYear() + 1}-${monthDay}T00:00:00`);
+  return Math.max(0, Math.ceil((next.getTime() - now.getTime()) / 86400000));
 }

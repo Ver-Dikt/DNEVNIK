@@ -1,16 +1,35 @@
 {
   "name": "ЕЖЕДНЕВНИК",
   "short_name": "Дневник",
-  "description": "Персональный PWA-ежедневник для задач, покупок, идей и inbox.",
+  "description": "Семейный PWA-ежедневник для задач, календаря, хотелок, документов и пары.",
   "start_url": "/DNEVNIK/",
+  "scope": "/DNEVNIK/",
   "display": "standalone",
-  "background_color": "#f7f3ea",
-  "theme_color": "#1f7a64",
+  "orientation": "portrait",
+  "background_color": "#111318",
+  "theme_color": "#111318",
   "icons": [
     {
       "src": "/DNEVNIK/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml"
+    },
+    {
+      "src": "/DNEVNIK/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/DNEVNIK/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/DNEVNIK/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
     }
   ]
 }

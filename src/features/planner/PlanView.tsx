@@ -1,11 +1,11 @@
 "use client";
 
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useMemo, useRef } from "react";
 import { Button, Segmented, Surface } from "@/components/ui/native";
 import { EntryCard } from "@/features/entries/EntryCard";
 import { calculateSharedPlan, money as formatMoney } from "@/features/family/shared-plan-utils";
-import { addDays, addMonths, formatHeaderDate, formatMonth, getMonthGrid, getWeekDays, isPast, isToday, sameMonth, shortWeekday } from "@/features/shared/date-utils";
+import { addDays, addMonths, formatHeaderDate, getMonthGrid, getWeekDays, isPast, isToday, sameMonth, shortWeekday } from "@/features/shared/date-utils";
 import { matchesOwner, ownerLabel } from "@/features/shared/entry-utils";
 import type { CalendarEvent, DiaryEntry, ImportantDate, Member, PlanTransaction, SharedPlan, Space } from "@/lib/types";
 
@@ -100,22 +100,23 @@ export function PlanView({
 
   return (
     <div className="grid gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="screen-header">
         <div>
-          <p className="text-sm font-bold text-[var(--muted)]">План</p>
-          <h1 className="text-3xl font-black leading-tight">{formatHeaderDate(selectedDate)}</h1>
+          <p className="screen-eyebrow">{formatHeaderDate(selectedDate)}</p>
+          <h1 className="screen-title">{monthTitle(selectedDate)}</h1>
         </div>
-        <Segmented
-          onChange={onOwnerFilterChange}
-          options={[
-            { label: "Все", value: "all" },
-            { label: ownerLabel("me", members), value: "me" },
-            { label: ownerLabel("partner", members), value: "partner" },
-            { label: "Общее", value: "shared" }
-          ]}
-          value={ownerFilter}
-        />
+        <button aria-label="Добавить событие" className="icon-add-button button button-plain" onClick={onAdd} type="button"><Plus size={30} /></button>
       </div>
+      <Segmented
+        onChange={onOwnerFilterChange}
+        options={[
+          { label: "Все", value: "all" },
+          { label: ownerLabel("me", members), value: "me" },
+          { label: ownerLabel("partner", members), value: "partner" },
+          { label: "Общее", value: "shared" }
+        ]}
+        value={ownerFilter}
+      />
 
       <SummaryStrip
         activePlan={activeSharedPlan}
@@ -127,7 +128,7 @@ export function PlanView({
       />
 
       <Surface className="grid gap-3 p-3" onTouchStart={(event) => (touchStart.current = { x: event.touches[0].clientX, y: event.touches[0].clientY })} onTouchEnd={(event) => handleTouchEnd(event.changedTouches[0].clientX, event.changedTouches[0].clientY)}>
-        <div className="flex items-center justify-between gap-2">
+        <div className="calendar-toolbar flex items-center justify-between gap-2">
           <Button aria-label="Назад" className="h-11 w-11 p-0" onClick={() => shift(-1)}><ChevronLeft size={20} /></Button>
           <Segmented
             options={[
@@ -142,8 +143,10 @@ export function PlanView({
         </div>
         {mode === "month" ? (
           <div>
-            <div className="mb-2 text-center text-sm font-black capitalize">{formatMonth(selectedDate)}</div>
-            <div className="grid grid-cols-7 gap-1">
+            <div className="month-weekdays mb-2 grid grid-cols-7">
+              {["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"].map((day) => <span key={day}>{day}</span>)}
+            </div>
+            <div className="month-grid grid grid-cols-7 gap-1">
               {monthDays.map((date) => <CalendarDay count={(entriesByDate.get(date)?.length ?? 0) + (markersByDate.get(date) ?? 0)} date={date} faded={!sameMonth(date, selectedDate)} key={date} selected={date === selectedDate} onClick={() => { onDateChange(date); onModeChange("day"); }} />)}
             </div>
           </div>
@@ -228,10 +231,15 @@ function readableDate(item: ImportantDate, selectedDate: string) {
   return item.repeat === "yearly" ? `${occurrence.slice(8, 10)}.${occurrence.slice(5, 7)} · ежегодно` : occurrence;
 }
 
+function monthTitle(date: string) {
+  const value = new Date(`${date}T12:00:00`);
+  return new Intl.DateTimeFormat("ru-RU", { month: "long" }).format(value);
+}
+
 function CalendarDay({ count, date, faded, selected, onClick }: { count: number; date: string; faded?: boolean; selected: boolean; onClick: () => void }) {
   return (
     <button className={`calendar-day ${selected ? "selected" : ""} ${isToday(date) ? "today" : ""} ${faded ? "opacity-35" : ""}`} onClick={onClick} type="button">
-      <span className="text-[10px] font-bold uppercase text-[var(--muted)]">{shortWeekday(date)}</span>
+      <span className="calendar-weekday text-[10px] font-bold uppercase text-[var(--muted)]">{shortWeekday(date)}</span>
       <span className="text-lg font-black">{Number(date.slice(8, 10))}</span>
       <span className="h-1.5">{count ? <i className="mx-auto block h-1.5 w-1.5 rounded-full bg-current" /> : null}</span>
     </button>
@@ -247,10 +255,10 @@ function AgendaSection({ emptyAction, entries, members, onComplete, onOpen, spac
         {entries.length ? <span className="text-sm font-bold text-[var(--muted)]">{entries.length}</span> : null}
       </div>
       {entries.length ? entries.map((entry) => <EntryCard entry={entry} key={entry.id} members={members} spaces={spaces} onComplete={() => onComplete(entry)} onOpen={() => onOpen(entry)} />) : (
-        <Surface className="p-5 text-center">
-          <div className="font-black">На выбранный день пусто</div>
-          <p className="mt-1 text-sm text-[var(--muted)]">Добавь голосом или текстом.</p>
-          <Button className="mt-3 px-4" onClick={emptyAction}>Добавить</Button>
+        <Surface className="empty-state p-5 text-center">
+          <h2>Ближайших дат нет</h2>
+          <p>Добавьте событие — оно появится в календаре и плане.</p>
+          <Button className="empty-cta" variant="primary" onClick={emptyAction}>Добавить</Button>
         </Surface>
       )}
     </section>

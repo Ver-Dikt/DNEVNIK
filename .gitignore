@@ -5,6 +5,7 @@
 
 .next/
 out/
+.pages-preview/
 node_modules/
 coverage/
 dist/
