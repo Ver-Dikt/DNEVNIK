@@ -5,8 +5,8 @@ import { DesktopNav, MobileNav } from "@/components/navigation/AppNav";
 import { Button, Surface } from "@/components/ui/native";
 import { CaptureSheet } from "@/features/capture/CaptureSheet";
 import { EntryDetailSheet } from "@/features/entries/EntryDetailSheet";
-import { IdeasView, MoneyView, SearchView, SettingsView, TasksView, UsView, WorkView } from "@/features/app/DirectViews";
-import { DocumentsHubView, LoyaltyCardsView, SharedPlansView } from "@/features/family/FamilyViews";
+import { IdeasView, MoneyView, SettingsView, TasksView, UsView, WorkView } from "@/features/app/DirectViews";
+import { DocumentsHubView } from "@/features/family/FamilyViews";
 import { PlanView } from "@/features/planner/PlanView";
 import { PurchasesView } from "@/features/purchases/PurchasesView";
 import { WishlistView } from "@/features/wishlist/WishlistView";
@@ -18,7 +18,7 @@ import { loadLearnedRules, rememberIntentRule, saveLearnedRules } from "@/lib/sm
 import type { LearnedRule } from "@/lib/smart-parser/types";
 import { todayIso } from "@/lib/dates";
 import { useDnevnikData } from "@/hooks/use-dnevnik-data";
-import type { AIParseResult, DiaryEntry, ProjectNode, PurchaseStatus, Space } from "@/lib/types";
+import type { AIParseResult, DiaryEntry, ProjectNode, Space } from "@/lib/types";
 
 type BrowserSpeechRecognition = {
   lang: string;
@@ -50,7 +50,7 @@ export function DnevnikApp() {
   const [ownerFilter, setOwnerFilter] = useState<"me" | "partner" | "shared">("shared");
   const [selectedDate, setSelectedDate] = useState(todayIso());
   const [planMode, setPlanMode] = useState<"day" | "week" | "month">("day");
-  const [purchaseView, setPurchaseView] = useState<PurchaseStatus>("planned");
+  const [purchaseView, setPurchaseView] = useState<"planned" | "ordered" | "purchased">("planned");
   const [captureOpen, setCaptureOpen] = useState(false);
   const [quickText, setQuickText] = useState("");
   const [preview, setPreview] = useState<AIParseResult | null>(null);
@@ -60,7 +60,6 @@ export function DnevnikApp() {
   const [isListening, setIsListening] = useState(false);
   const [voiceMessage, setVoiceMessage] = useState("");
   const [toast, setToast] = useState<{ title: string; detail?: string; action?: () => void; actionLabel?: string } | null>(null);
-  const [query, setQuery] = useState("");
   const [learnedRules, setLearnedRules] = useState<LearnedRule[]>([]);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const keepListeningRef = useRef(false);
@@ -439,7 +438,7 @@ export function DnevnikApp() {
           <PlanView calendarEvents={data.calendarEvents} entries={data.entries} importantDates={data.importantDates} members={data.members} planTransactions={data.planTransactions} sharedPlans={data.sharedPlans} spaces={data.spaces} ownerFilter={ownerFilter} mode={planMode} selectedDate={selectedDate} onModeChange={setMode} onDateChange={setSelectedDate} onOwnerFilterChange={setOwnerFilter} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} onAdd={() => setCaptureOpen(true)} />
         ) : null}
         {screen === "us" ? (
-          <UsView calendarEvents={data.calendarEvents} importantDates={data.importantDates} members={data.members} onOpenSettings={() => navigate("settings")} />
+          <UsView calendarEvents={data.calendarEvents} entries={data.entries} importantDates={data.importantDates} members={data.members} sharedPlans={data.sharedPlans} spaces={data.spaces} onOpenEntry={(entry) => setDetailId(entry.id)} />
         ) : null}
         {screen === "tasks" ? (
           <TasksView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={() => createManualEntry("task")} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
@@ -451,10 +450,7 @@ export function DnevnikApp() {
           <PurchasesView entries={data.entries} members={data.members} spaces={data.spaces} status={purchaseView} onAdd={() => createManualEntry("purchase", { area: "Дом", projectPath: ["Дом"], assignedTo: "shared", visibility: "shared" })} onStatusChange={setPurchaseView} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
         {screen === "wishlist" ? (
-          <WishlistView entries={data.entries} members={data.members} spaces={data.spaces} onChangeEntries={data.setEntries} onCreateManual={(planned) => createManualEntry("wish", planned ? { wish: { status: "planned", owner: "shared", currency: data.settings.defaultCurrency }, assignedTo: "shared", visibility: "shared" } : undefined)} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
-        ) : null}
-        {screen === "sharedPlans" ? (
-          <SharedPlansView defaultCurrency={data.settings.defaultCurrency} plans={data.sharedPlans} transactions={data.planTransactions} onChangePlans={data.setSharedPlans} onChangeTransactions={data.setPlanTransactions} />
+          <WishlistView defaultCurrency={data.settings.defaultCurrency} entries={data.entries} members={data.members} planTransactions={data.planTransactions} sharedPlans={data.sharedPlans} spaces={data.spaces} onChangeEntries={data.setEntries} onChangePlanTransactions={data.setPlanTransactions} onChangeSharedPlans={data.setSharedPlans} onCreateManual={(planned) => createManualEntry("wish", planned ? { wish: { status: "planned", owner: "shared", currency: data.settings.defaultCurrency }, assignedTo: "shared", visibility: "shared" } : undefined)} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
         {screen === "money" ? (
           <MoneyView entries={data.entries} members={data.members} sharedPlans={data.sharedPlans} spaces={data.spaces} onOpen={(entry) => setDetailId(entry.id)} />
@@ -462,14 +458,8 @@ export function DnevnikApp() {
         {screen === "documents" ? (
           <DocumentsHubView documents={data.documents} loyaltyCards={data.loyaltyCards} onChangeDocuments={data.setDocuments} onChangeLoyaltyCards={data.setLoyaltyCards} />
         ) : null}
-        {screen === "loyaltyCards" ? (
-          <LoyaltyCardsView cards={data.loyaltyCards} onChangeCards={data.setLoyaltyCards} />
-        ) : null}
         {screen === "ideas" ? (
           <IdeasView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={() => createManualEntry("idea")} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
-        ) : null}
-        {screen === "search" ? (
-          <SearchView calendarEvents={data.calendarEvents} entries={data.entries} importantDates={data.importantDates} loyaltyCards={data.loyaltyCards} members={data.members} query={query} sharedPlans={data.sharedPlans} spaces={data.spaces} onChangeQuery={setQuery} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
         {screen === "settings" ? (
           <SettingsView importantDates={data.importantDates} members={data.members} settings={data.settings} onChangeImportantDates={data.setImportantDates} onChangeMembers={data.setMembers} onChangeSettings={data.setSettings} onClearAll={data.clearEverything} onClearEntries={data.clearEntries} onExport={exportData} onImport={importData} />

@@ -1,4 +1,4 @@
-import { BriefcaseBusiness, CalendarDays, FileText, Gift, HeartHandshake, Lightbulb, ListTodo, Search, Settings, ShoppingCart, Target, WalletCards, type LucideProps } from "lucide-react";
+import { BriefcaseBusiness, CalendarDays, FileText, Gift, HeartHandshake, Lightbulb, ListTodo, Settings, ShoppingCart, WalletCards, type LucideProps } from "lucide-react";
 import type { ScreenId } from "@/features/app/types";
 
 const navItems: Array<{ id: ScreenId; label: string; icon: React.ComponentType<LucideProps> }> = [
@@ -8,12 +8,9 @@ const navItems: Array<{ id: ScreenId; label: string; icon: React.ComponentType<L
   { id: "work", label: "Работа", icon: BriefcaseBusiness },
   { id: "purchases", label: "Покупки", icon: ShoppingCart },
   { id: "wishlist", label: "Хотелки", icon: Gift },
-  { id: "sharedPlans", label: "Общие планы", icon: Target },
   { id: "money", label: "Деньги", icon: WalletCards },
   { id: "documents", label: "Документы", icon: FileText },
-  { id: "loyaltyCards", label: "Карты", icon: WalletCards },
   { id: "ideas", label: "Идеи", icon: Lightbulb },
-  { id: "search", label: "Поиск", icon: Search },
   { id: "settings", label: "Настройки", icon: Settings }
 ];
 

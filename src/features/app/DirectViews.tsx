@@ -1,49 +1,127 @@
 "use client";
 
-import { CalendarHeart, CheckCircle2, ChevronRight, HeartHandshake, Plus } from "lucide-react";
+import { CalendarHeart, CheckCircle2, Plus, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Button, Field, Input, Segmented, Surface } from "@/components/ui/native";
 import { EntryCard } from "@/features/entries/EntryCard";
 import { calculateBudget } from "@/lib/finance";
-import type { AppSettings, CalendarEvent, DiaryEntry, ImportantDate, LoyaltyCard, Member, SharedPlan, Space } from "@/lib/types";
+import { purchaseStatusGroup, wishStatus } from "@/features/shared/entry-utils";
+import type { AppSettings, AssignedTo, CalendarEvent, DiaryEntry, ImportantDate, LoyaltyCard, Member, SharedPlan, Space } from "@/lib/types";
 
-export function UsView({ calendarEvents, importantDates, members, onOpenSettings }: { calendarEvents: CalendarEvent[]; importantDates: ImportantDate[]; members: Member[]; onOpenSettings: () => void }) {
-  const nextDate = [...importantDates].sort((a, b) => a.date.localeCompare(b.date))[0];
+export function UsView({ calendarEvents, entries, importantDates, sharedPlans, spaces, onOpenEntry }: { calendarEvents: CalendarEvent[]; entries: DiaryEntry[]; importantDates: ImportantDate[]; members: Member[]; sharedPlans: SharedPlan[]; spaces: Space[]; onOpenEntry: (entry: DiaryEntry) => void }) {
+  const [summaryOpen, setSummaryOpen] = useState(false);
+  const sharedEntries = entries.filter((entry) => entry.assignedTo === "shared" || entry.visibility === "shared");
+  const sharedTasks = sharedEntries.filter((entry) => entry.kind === "task" && entry.status !== "done" && entry.status !== "cancelled");
+  const sharedPurchases = sharedEntries.filter((entry) => entry.kind === "purchase" && purchaseStatusGroup(entry) !== "purchased" && entry.status !== "cancelled");
+  const sharedWishes = sharedEntries.filter((entry) => entry.kind === "wish" && wishStatus(entry) !== "dismissed" && wishStatus(entry) !== "purchased");
+  const activePlans = sharedPlans.filter((plan) => plan.status === "active" && plan.visibility === "shared");
+  const today = new Date().toISOString().slice(0, 10);
+  const todayEntries = sharedEntries.filter((entry) => entry.dueDate === today && entry.status !== "done" && entry.status !== "cancelled").slice(0, 3);
+  const nextDate = nextImportantDate(importantDates, today);
+  const upcomingEntries = sharedEntries.filter((entry) => entry.dueDate && entry.dueDate >= today && entry.status !== "done" && entry.status !== "cancelled").sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? "")).slice(0, 3);
+  const important = sharedEntries.filter((entry) => entry.priority === "high" && entry.status !== "done" && entry.status !== "cancelled").slice(0, 3);
   return (
     <div className="grid gap-5">
-      <Header eyebrow="Общее пространство" title="Мы" />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Surface className="couple-stat-card"><b>{daysTogether(importantDates)}</b><span>дней вместе</span></Surface>
-        <Surface className="couple-stat-card accent"><b>{daysToAnniversary(importantDates)}</b><span>до годовщины</span></Surface>
+      <div className="screen-header compact-us-header">
+        <div>
+          <p className="screen-eyebrow">Общее пространство</p>
+          <h1 className="screen-title">Мы</h1>
+        </div>
+        <div className="couple-mini-stats">
+          <Surface className="couple-stat-card"><b>{daysTogether(importantDates)}</b><span>дней вместе</span></Surface>
+          <Surface className="couple-stat-card accent"><b>{daysToAnniversary(importantDates)}</b><span>до годовщины</span></Surface>
+        </div>
       </div>
       <Surface className="summary-panel p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-xs font-black uppercase text-[var(--muted)]">Наши данные</p>
-            <h2 className="mt-2 text-xl font-black">{members.map((member) => member.name).join(" + ")}</h2>
+            <h2 className="text-xl font-black">Наши данные</h2>
           </div>
-          <button className="text-sm font-black text-[var(--accent)]" onClick={onOpenSettings} type="button">Смотреть ›</button>
+          <button className="text-sm font-black text-[var(--accent)]" onClick={() => setSummaryOpen(true)} type="button">Смотреть ›</button>
         </div>
-        <div className="mt-5 grid grid-cols-4 gap-3">
-          <MiniStat label="хотелок" value="0" />
-          <MiniStat label="поездок" value="0" />
-          <MiniStat label="планов" value="0" />
-          <MiniStat label="файлов" value="0" />
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <MiniStat label="хотелки" value={String(sharedWishes.length)} />
+          <MiniStat label="покупки" value={String(sharedPurchases.length)} />
+          <MiniStat label="планы" value={String(activePlans.length)} />
+          <MiniStat label="общие задачи" value={String(sharedTasks.length)} />
         </div>
       </Surface>
-      <Surface className="grid gap-3 p-4">
-        <div className="flex items-center gap-3"><HeartHandshake size={20} /><h2 className="text-lg font-black">Нас двое</h2></div>
-        {members.map((member) => <div className="rounded-2xl bg-black/[.035] p-3" key={member.id}><div className="font-black">{member.avatar} {member.name}</div><div className="text-sm text-[var(--muted)]">{member.role === "owner" ? "Твой профиль" : "Профиль партнёра"}{member.birthday ? ` · ${member.birthday}` : ""}</div></div>)}
-      </Surface>
+      <PreviewSection empty="На сегодня общих дел нет." entries={todayEntries} members={[]} spaces={spaces} title="Сегодня" onOpenEntry={onOpenEntry} />
       <Surface className="grid gap-2 p-4">
         <div className="flex items-center gap-3"><CalendarHeart size={20} /><h2 className="text-lg font-black">Ближайшее</h2></div>
-        {nextDate ? <p className="font-bold">{nextDate.title} · {nextDate.date}</p> : <p className="text-sm text-[var(--muted)]">Пока нет важных дат.</p>}
-        {calendarEvents.slice(0, 3).map((event) => <p className="text-sm text-[var(--muted)]" key={event.id}>{event.title} · {event.startDate}</p>)}
+        {nextDate ? <p className="font-bold">{nextDate.title} · {formatShortDate(nextDate.date)}</p> : null}
+        {upcomingEntries.map((entry) => <button className="text-left text-sm text-[var(--muted)]" key={entry.id} onClick={() => onOpenEntry(entry)} type="button">{entry.title} · {formatShortDate(entry.dueDate ?? "")}</button>)}
+        {!nextDate && !upcomingEntries.length ? <p className="text-sm text-[var(--muted)]">Пока нет ближайших общих событий.</p> : null}
+        {calendarEvents.slice(0, 2).map((event) => <p className="text-sm text-[var(--muted)]" key={event.id}>{event.title} · {formatShortDate(event.startDate)}</p>)}
       </Surface>
-      <button className="settings-row" onClick={onOpenSettings} type="button"><span>Настройки пары</span><ChevronRight size={22} /></button>
+      <PreviewSection empty="Срочных общих пунктов нет." entries={important} members={[]} spaces={spaces} title="Важное" onOpenEntry={onOpenEntry} />
+      {summaryOpen ? <SharedSummarySheet entries={sharedEntries} plans={activePlans} spaces={spaces} onClose={() => setSummaryOpen(false)} onOpenEntry={onOpenEntry} /> : null}
     </div>
   );
 }
+
+function SharedSummarySheet({ entries, plans, spaces, onClose, onOpenEntry }: { entries: DiaryEntry[]; plans: SharedPlan[]; spaces: Space[]; onClose: () => void; onOpenEntry: (entry: DiaryEntry) => void }) {
+  const tasks = entries.filter((entry) => entry.kind === "task" && entry.status !== "done" && entry.status !== "cancelled").slice(0, 6);
+  const purchases = entries.filter((entry) => entry.kind === "purchase" && purchaseStatusGroup(entry) !== "purchased" && entry.status !== "cancelled").slice(0, 6);
+  const wishes = entries.filter((entry) => entry.kind === "wish" && wishStatus(entry) !== "dismissed" && wishStatus(entry) !== "purchased").slice(0, 6);
+  return (
+    <div className="fixed inset-0 z-[75] flex items-end justify-center bg-black/30 px-3 pb-[calc(10px+env(safe-area-inset-bottom))] backdrop-blur-sm" onClick={onClose}>
+      <Surface className="max-h-[calc(100dvh_-_24px_-_env(safe-area-inset-bottom))] w-full max-w-2xl overflow-auto p-4" onClick={(event) => event.stopPropagation()}>
+        <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-black/15" />
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-2xl font-black">Общее</h2>
+          <button className="grid h-10 w-10 place-items-center rounded-full bg-black/[.05]" onClick={onClose} type="button" aria-label="Закрыть"><X size={19} /></button>
+        </div>
+        <SharedSummaryBlock entries={tasks} spaces={spaces} title="Задачи" onOpenEntry={onOpenEntry} />
+        <SharedSummaryBlock entries={purchases} spaces={spaces} title="Покупки" onOpenEntry={onOpenEntry} />
+        <SharedSummaryBlock entries={wishes} spaces={spaces} title="Хотелки" onOpenEntry={onOpenEntry} />
+        <section className="mt-4 grid gap-2">
+          <h3 className="px-1 text-base font-black">Планы</h3>
+          {plans.length ? plans.slice(0, 6).map((plan) => <Surface className="p-4" key={plan.id}><div className="font-black">{plan.title}</div><div className="text-sm text-[var(--muted)]">{plan.targetAmount ? `${plan.targetAmount.toLocaleString("ru-RU")} ${plan.currency ?? "RUB"}` : "Без суммы"}</div></Surface>) : <p className="px-1 text-sm text-[var(--muted)]">Планов пока нет.</p>}
+        </section>
+      </Surface>
+    </div>
+  );
+}
+
+function SharedSummaryBlock({ entries, spaces, title, onOpenEntry }: { entries: DiaryEntry[]; spaces: Space[]; title: string; onOpenEntry: (entry: DiaryEntry) => void }) {
+  return (
+    <section className="mt-4 grid gap-2">
+      <h3 className="px-1 text-base font-black">{title}</h3>
+      {entries.length ? entries.map((entry) => <button className="text-left" key={entry.id} onClick={() => onOpenEntry(entry)} type="button"><Surface className="p-4"><div className="font-black">{entry.title}</div><div className="text-sm text-[var(--muted)]">{entry.area ?? spaces.find((space) => space.id === entry.spaceId)?.name ?? "Общее"}</div></Surface></button>) : <p className="px-1 text-sm text-[var(--muted)]">Пока пусто.</p>}
+    </section>
+  );
+}
+
+function PreviewSection({ empty, entries, members, spaces, title, onOpenEntry }: { empty: string; entries: DiaryEntry[]; members: Member[]; spaces: Space[]; title: string; onOpenEntry: (entry: DiaryEntry) => void }) {
+  return (
+    <section className="grid gap-2">
+      <div className="flex items-center justify-between px-1">
+        <h2 className="text-base font-black">{title}</h2>
+        {entries.length ? <span className="text-sm font-bold text-[var(--muted)]">{entries.length}</span> : null}
+      </div>
+      {entries.length ? entries.map((entry) => <EntryCard entry={entry} key={entry.id} members={members} spaces={spaces} onComplete={() => undefined} onOpen={() => onOpenEntry(entry)} />) : <Surface className="p-4 text-sm text-[var(--muted)]">{empty}</Surface>}
+    </section>
+  );
+}
+
+function formatShortDate(date: string) {
+  if (!date) return "";
+  const [year, month, day] = date.split("-");
+  return `${day}.${month}.${year}`;
+}
+
+function nextImportantDate(dates: ImportantDate[], fromDate: string) {
+  return [...dates].sort((a, b) => nextOccurrenceDate(a, fromDate).localeCompare(nextOccurrenceDate(b, fromDate)))[0];
+}
+
+function nextOccurrenceDate(item: ImportantDate, fromDate: string) {
+  if (item.repeat === "none") return item.date;
+  const year = Number(fromDate.slice(0, 4));
+  const candidate = `${year}-${item.date.slice(5)}`;
+  return candidate >= fromDate ? candidate : `${year + 1}-${item.date.slice(5)}`;
+}
+
 
 export function TasksView({ entries, members, spaces, onAdd, onComplete, onOpen }: EntryListProps) {
   const [filter, setFilter] = useOwnerFilter();
@@ -51,7 +129,7 @@ export function TasksView({ entries, members, spaces, onAdd, onComplete, onOpen 
   return (
     <div className="grid gap-4">
       <Header action={<IconAddButton label="Добавить задачу" onClick={() => onAdd?.()} />} eyebrow="Ответственность" title="Задачи" />
-      <Segmented value={filter} onChange={setFilter} options={[{ label: "Общее", value: "shared" }, { label: memberName(members, "me"), value: "me" }, { label: memberName(members, "partner"), value: "partner" }]} />
+      <Segmented value={filter} onChange={setFilter} options={ownerFilterOptions} />
       <EntryList entries={tasks} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} emptyAction={onAdd} emptyButton="Добавить задачу" emptyIcon={<CheckCircle2 size={58} />} emptyTitle="Список дел на двоих" empty="Пишите, что нужно сделать. Задачу можно оставить себе или отдать партнёру." />
     </div>
   );
@@ -218,9 +296,11 @@ function updateMember(id: Member["id"], patch: Partial<Member>, onChangeMembers:
   onChangeMembers((current) => current.map((member) => member.id === id ? { ...member, ...patch, updatedAt: new Date().toISOString(), revision: (member.revision ?? 1) + 1 } : member));
 }
 
-function memberName(members: Member[], id: Member["id"]) {
-  return members.find((member) => member.id === id)?.name || (id === "me" ? "Моё" : "Партнёр");
-}
+const ownerFilterOptions: Array<{ label: string; value: AssignedTo }> = [
+  { label: "Моё", value: "me" },
+  { label: "Партнёра", value: "partner" },
+  { label: "Общее", value: "shared" }
+];
 
 function initials(name: string) {
   return name.trim().slice(0, 1).toUpperCase() || "•";

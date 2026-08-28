@@ -3,8 +3,8 @@
 import { Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { Button, Field, Input, Segmented, Select, Surface, Textarea } from "@/components/ui/native";
-import type { AssignedTo, DiaryEntry, EntryKind, Member, ProjectNode, PurchaseStatus, RepeatRule, Space, WishStatus } from "@/lib/types";
-import { purchaseStatus, purchaseStatusToEntryStatus, wishStatus } from "@/features/shared/entry-utils";
+import type { AssignedTo, DiaryEntry, EntryKind, Member, ProjectNode, RepeatRule, Space, WishStatus } from "@/lib/types";
+import { purchaseStatusGroup, purchaseStatusToEntryStatus, wishStatus } from "@/features/shared/entry-utils";
 import { addDays } from "@/features/shared/date-utils";
 import { todayIso } from "@/lib/dates";
 
@@ -34,7 +34,7 @@ export function EntryDetailSheet({
   const [newSpace, setNewSpace] = useState("");
   const [newProject, setNewProject] = useState("");
   const [checkText, setCheckText] = useState("");
-  const currentPurchaseStatus = purchaseStatus(entry);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const currentWishStatus = wishStatus(entry);
   const isWish = entry.kind === "wish";
   const isPurchase = entry.kind === "purchase";
@@ -71,13 +71,67 @@ export function EntryDetailSheet({
             <Field label="Кому">
               <Select value={entry.assignedTo ?? "me"} onChange={(event) => onChange({ assignedTo: event.target.value as AssignedTo, visibility: event.target.value === "shared" ? "shared" : "private" })}>
                 <option value="me">{memberName(members, "me")}</option>
-                <option value="partner">{memberName(members, "partner")}</option>
+                <option value="partner">Партнёра</option>
                 <option value="shared">Общее</option>
               </Select>
             </Field>
           </div>
 
-          {showStructure ? (
+          {showCalendar ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Дата"><Input type="date" value={entry.dueDate ?? ""} onChange={(event) => onChange({ dueDate: event.target.value || undefined, schedule: event.target.value ? "today" : "none" })} /></Field>
+              <Field label="Время"><Input type="time" value={entry.time ?? ""} onChange={(event) => onChange({ time: event.target.value || undefined })} /></Field>
+            </div>
+          ) : null}
+
+          {entry.kind === "purchase" ? (
+            <div className="grid gap-3 rounded-3xl border border-[var(--line)] bg-[var(--surface-soft)] p-3">
+              <Segmented
+                className="status-segmented"
+                value={purchaseStatusGroup(entry)}
+                onChange={(status: "planned" | "ordered" | "purchased") => onChange({ purchase: { ...entry.purchase, status }, status: purchaseStatusToEntryStatus(status) })}
+                options={[
+                  { label: "Нужно", value: "planned" },
+                  { label: "Заказано", value: "ordered" },
+                  { label: "Куплено", value: "purchased" }
+                ]}
+              />
+              <Segmented
+                className="status-segmented"
+                value={entry.priority === "high" ? "high" : "normal"}
+                onChange={(priority: "high" | "normal") => onChange({ priority })}
+                options={[
+                  { label: "Обычное", value: "normal" },
+                  { label: "Срочно", value: "high" }
+                ]}
+              />
+              <MoneyFields entry={entry} onChange={onChange} mode="purchase" />
+            </div>
+          ) : null}
+
+          {entry.kind === "wish" ? (
+            <div className="grid gap-3 rounded-3xl border border-[var(--line)] bg-[var(--surface-soft)] p-3">
+              <Segmented
+                className="status-segmented"
+                value={currentWishStatus}
+                onChange={(status: WishStatus) => onChange({ wish: { ...entry.wish, status } })}
+                options={[
+                  { label: "Сохранено", value: "saved" },
+                  { label: "Думаем", value: "considering" },
+                  { label: "План", value: "planned" },
+                  { label: "Куплено", value: "purchased" }
+                ]}
+              />
+              <MoneyFields entry={entry} onChange={onChange} mode="wish" />
+            </div>
+          ) : null}
+
+          <Button className="w-full justify-between px-4" onClick={() => setAdvancedOpen((value) => !value)}>
+            Ещё
+            <span>{advancedOpen ? "−" : "+"}</span>
+          </Button>
+
+          {advancedOpen && showStructure ? (
             <>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Пространство">
@@ -125,11 +179,9 @@ export function EntryDetailSheet({
             </>
           ) : null}
 
-          <div className={`grid gap-3 ${isWish ? "sm:grid-cols-1" : "sm:grid-cols-4"}`}>
+          {advancedOpen ? <div className={`grid gap-3 ${isWish ? "sm:grid-cols-1" : "sm:grid-cols-2"}`}>
             {showCalendar ? (
               <>
-                <Field label="Дата"><Input type="date" value={entry.dueDate ?? ""} onChange={(event) => onChange({ dueDate: event.target.value || undefined, schedule: event.target.value ? "today" : "none" })} /></Field>
-                <Field label="Время"><Input type="time" value={entry.time ?? ""} onChange={(event) => onChange({ time: event.target.value || undefined })} /></Field>
                 <Field label="Повтор">
                   <Select value={entry.repeat ?? "none"} onChange={(event) => onChange({ repeat: event.target.value as RepeatRule })}>
                     <option value="none">Нет</option>
@@ -166,46 +218,12 @@ export function EntryDetailSheet({
                 )}
               </Select>
             </Field>
-          </div>
+          </div> : null}
 
-          {entry.kind === "purchase" ? (
-            <div className="grid gap-3 rounded-3xl border border-[var(--line)] bg-[var(--surface-soft)] p-3">
-              <Segmented
-                className="status-segmented"
-                value={currentPurchaseStatus}
-                onChange={(status: PurchaseStatus) => onChange({ purchase: { ...entry.purchase, status }, status: purchaseStatusToEntryStatus(status) })}
-                options={[
-                  { label: "Нужно", value: "planned" },
-                  { label: "Выбрано", value: "selected" },
-                  { label: "Заказано", value: "ordered" },
-                  { label: "Куплено", value: "purchased" }
-                ]}
-              />
-              <MoneyFields entry={entry} onChange={onChange} mode="purchase" />
-            </div>
-          ) : null}
+          {advancedOpen && !isPurchase ? <Field label="Ссылка"><Input value={entry.url ?? ""} onChange={(event) => onChange({ url: event.target.value || undefined })} /></Field> : null}
+          {advancedOpen ? <Field label="Заметки"><Textarea value={entry.description ?? ""} onChange={(event) => onChange({ description: event.target.value })} /></Field> : null}
 
-          {entry.kind === "wish" ? (
-            <div className="grid gap-3 rounded-3xl border border-[var(--line)] bg-[var(--surface-soft)] p-3">
-              <Segmented
-                className="status-segmented"
-                value={currentWishStatus}
-                onChange={(status: WishStatus) => onChange({ wish: { ...entry.wish, status } })}
-                options={[
-                  { label: "Сохранено", value: "saved" },
-                  { label: "Думаем", value: "considering" },
-                  { label: "План", value: "planned" },
-                  { label: "Куплено", value: "purchased" }
-                ]}
-              />
-              <MoneyFields entry={entry} onChange={onChange} mode="wish" />
-            </div>
-          ) : null}
-
-          {!isPurchase ? <Field label="Ссылка"><Input value={entry.url ?? ""} onChange={(event) => onChange({ url: event.target.value || undefined })} /></Field> : null}
-          <Field label="Заметки"><Textarea value={entry.description ?? ""} onChange={(event) => onChange({ description: event.target.value })} /></Field>
-
-          <div className="grid gap-2">
+          {advancedOpen ? <div className="grid gap-2">
             <div className="text-sm font-black">Чеклист</div>
             {(entry.checklist ?? []).map((item) => (
               <label className="flex min-h-11 items-center gap-3 rounded-2xl bg-black/[.035] px-3" key={item.id}>
@@ -222,7 +240,7 @@ export function EntryDetailSheet({
                 setCheckText("");
               }}><Plus size={18} /></Button>
             </div>
-          </div>
+          </div> : null}
 
           {entry.needsReview ? <Button className="font-bold" onClick={onRemember}>Запомнить исправление для похожих записей</Button> : null}
 
@@ -237,7 +255,7 @@ export function EntryDetailSheet({
 }
 
 function memberName(members: Member[], id: Member["id"]) {
-  return members.find((member) => member.id === id)?.name || (id === "me" ? "Моё" : "Партнёр");
+  return id === "me" ? "Моё" : "Партнёра";
 }
 
 function MoneyFields({ entry, mode, onChange }: { entry: DiaryEntry; mode: "purchase" | "wish"; onChange: (patch: Partial<DiaryEntry>) => void }) {

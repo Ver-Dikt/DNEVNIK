@@ -4,24 +4,74 @@ import { ExternalLink, Gift, Plus } from "lucide-react";
 import { useState } from "react";
 import { Badge, Button, Field, Input, Segmented, Select, Surface } from "@/components/ui/native";
 import { money, ownerLabel, wishStatus } from "@/features/shared/entry-utils";
+import { calculateSharedPlan, money as planMoney } from "@/features/family/shared-plan-utils";
 import { productMetadataProvider } from "@/lib/product-metadata";
-import type { AssignedTo, DiaryEntry, Member, ProductMetadata, Space, WishStatus } from "@/lib/types";
+import type { AssignedTo, DiaryEntry, Member, PlanTransaction, ProductMetadata, SharedPlan, Space, WishStatus } from "@/lib/types";
 
 type EntriesSetter = (next: DiaryEntry[] | ((current: DiaryEntry[]) => DiaryEntry[])) => void;
 
-export function WishlistView({ entries, members, onChangeEntries, onComplete, onCreateManual, onOpen }: { entries: DiaryEntry[]; members: Member[]; spaces: Space[]; onChangeEntries: EntriesSetter; onComplete: (entry: DiaryEntry) => void; onCreateManual: (planned?: boolean) => void; onOpen: (entry: DiaryEntry) => void }) {
+export function WishlistView({
+  defaultCurrency = "RUB",
+  entries,
+  planTransactions = [],
+  sharedPlans = [],
+  onChangeEntries,
+  onChangePlanTransactions = () => undefined,
+  onChangeSharedPlans = () => undefined,
+  onComplete,
+  onCreateManual,
+  onOpen
+}: {
+  defaultCurrency?: string;
+  entries: DiaryEntry[];
+  members: Member[];
+  planTransactions?: PlanTransaction[];
+  sharedPlans?: SharedPlan[];
+  spaces: Space[];
+  onChangeEntries: EntriesSetter;
+  onChangePlanTransactions?: (next: PlanTransaction[] | ((current: PlanTransaction[]) => PlanTransaction[])) => void;
+  onChangeSharedPlans?: (next: SharedPlan[] | ((current: SharedPlan[]) => SharedPlan[])) => void;
+  onComplete: (entry: DiaryEntry) => void;
+  onCreateManual: (planned?: boolean) => void;
+  onOpen: (entry: DiaryEntry) => void;
+}) {
   const [mode, setMode] = useState<"wishes" | "plans">("wishes");
-  const [owner, setOwner] = useState<AssignedTo>("shared");
+  const [owner, setOwner] = useState<AssignedTo>("me");
   const [draftUrl, setDraftUrl] = useState("");
   const [draft, setDraft] = useState<ProductMetadata | null>(null);
   const [loading, setLoading] = useState(false);
   const [metadataFailed, setMetadataFailed] = useState(false);
+  const [planTitle, setPlanTitle] = useState("");
+  const [planAmount, setPlanAmount] = useState("");
   const wishes = entries.filter((entry) => {
     if (entry.kind !== "wish" || wishStatus(entry) === "dismissed") return false;
     const status = wishStatus(entry);
     const inMode = mode === "plans" ? status === "planned" : status !== "planned";
     return inMode && (entry.wish?.owner ?? entry.assignedTo) === owner;
   });
+  const plans = sharedPlans.filter((plan) => plan.status === "active" && planOwner(plan) === owner);
+
+  function createPlan() {
+    const title = planTitle.trim();
+    if (!title) return;
+    const now = new Date().toISOString();
+    onChangeSharedPlans((current) => [{
+      id: crypto.randomUUID(),
+      title,
+      type: "goal",
+      status: "active",
+      targetAmount: numberOrUndefined(planAmount),
+      currency: defaultCurrency,
+      createdBy: owner === "partner" ? "partner" : "me",
+      updatedBy: "me",
+      createdAt: now,
+      updatedAt: now,
+      revision: 1,
+      visibility: owner === "shared" ? "shared" : "private"
+    }, ...current]);
+    setPlanTitle("");
+    setPlanAmount("");
+  }
 
   async function prepareUrl() {
     const url = draftUrl.trim();
@@ -86,9 +136,10 @@ export function WishlistView({ entries, members, onChangeEntries, onComplete, on
         <Button aria-label="Добавить хотелку" className="icon-add-button" onClick={() => onCreateManual(mode === "plans")}><Plus size={30} /></Button>
       </div>
       <Segmented value={mode} onChange={setMode} options={[{ label: "Хотелки", value: "wishes" }, { label: "Планы", value: "plans" }]} />
-      <Surface className="grid gap-3 p-4">
+      <Segmented value={owner} onChange={setOwner} options={ownerOptions} />
+      {mode === "wishes" ? <Surface className="grid gap-3 p-4">
         <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-          <Input placeholder={mode === "plans" ? "Ссылка или идея для плана" : "Вставь ссылку на товар"} value={draftUrl} onChange={(event) => setDraftUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void prepareUrl(); }} />
+          <Input placeholder="Вставь ссылку на товар" value={draftUrl} onChange={(event) => setDraftUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void prepareUrl(); }} />
           <Button disabled={loading} onClick={prepareUrl}><Plus size={18} />{loading ? "Читаю..." : "Превью"}</Button>
         </div>
         {draft ? (
@@ -103,14 +154,26 @@ export function WishlistView({ entries, members, onChangeEntries, onComplete, on
                 <Field label="Картинка"><Input value={draft.imageUrl ?? ""} onChange={(event) => setDraft({ ...draft, imageUrl: event.target.value })} /></Field>
                 <Field label="Магазин"><Input value={draft.store ?? ""} onChange={(event) => setDraft({ ...draft, store: event.target.value })} /></Field>
               </div>
-              <Button className="w-fit px-4" onClick={saveDraft}>Сохранить в {mode === "plans" ? "планы" : "хотелки"}</Button>
+              <Button className="w-fit px-4" onClick={saveDraft}>Сохранить в хотелки</Button>
             </div>
           </div>
         ) : null}
-      </Surface>
-      <Segmented value={owner} onChange={setOwner} options={[{ label: "Общее", value: "shared" }, { label: ownerLabel("me", members), value: "me" }, { label: ownerLabel("partner", members), value: "partner" }]} />
+      </Surface> : (
+        <Surface className="grid gap-3 p-4">
+          <div className="grid gap-2 sm:grid-cols-[1fr_150px_auto]">
+            <Input placeholder="Отпуск, ремонт, большая покупка" value={planTitle} onChange={(event) => setPlanTitle(event.target.value)} />
+            <Input inputMode="decimal" placeholder="Цель" value={planAmount} onChange={(event) => setPlanAmount(event.target.value)} />
+            <Button className="px-4" onClick={createPlan}><Plus size={18} />Создать</Button>
+          </div>
+        </Surface>
+      )}
+      {mode === "plans" ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {plans.map((plan) => <PlanCard key={plan.id} plan={plan} plans={sharedPlans} transactions={planTransactions} onChangePlans={onChangeSharedPlans} onChangeTransactions={onChangePlanTransactions} />)}
+        </div>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {wishes.map((entry) => (
+        {mode === "wishes" ? wishes.map((entry) => (
           <Surface className="overflow-hidden p-0" key={entry.id}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {entry.wish?.imageUrl ? <img alt="" className="h-40 w-full object-cover" src={entry.wish.imageUrl} /> : <div className="h-32 bg-[var(--surface-soft)]" />}
@@ -120,7 +183,7 @@ export function WishlistView({ entries, members, onChangeEntries, onComplete, on
                   <h2 className="line-clamp-2 text-lg font-black">{entry.title}</h2>
                   <p className="text-sm text-[var(--muted)]">{entry.wish?.store ?? entry.store ?? domainFromUrl(entry.url)}</p>
                 </button>
-                <Badge>{ownerLabel(entry.wish?.owner ?? entry.assignedTo, members)}</Badge>
+                <Badge>{ownerLabel(entry.wish?.owner ?? entry.assignedTo)}</Badge>
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="font-black">{money(entry) ? `${money(entry).toLocaleString("ru-RU")} ₽` : "Без цены"}</div>
@@ -138,16 +201,74 @@ export function WishlistView({ entries, members, onChangeEntries, onComplete, on
               </div>
             </div>
           </Surface>
-        ))}
+        )) : null}
       </div>
-      {!wishes.length ? <Surface className="empty-state p-6 text-center text-sm text-[var(--muted)]"><div className="empty-icon"><Gift size={62} /></div><h2>{mode === "plans" ? "Планов пока нет" : "Список пуст"}</h2><p>{mode === "plans" ? "Сюда попадут хотелки, которые уже решили превратить в план." : "Киньте ссылку на товар или добавьте мечту вручную."}</p><Button className="empty-cta" variant="primary" onClick={() => onCreateManual(mode === "plans")}>{mode === "plans" ? "Добавить план" : "Добавить хотелку"}</Button></Surface> : null}
+      {mode === "wishes" && !wishes.length ? <Surface className="empty-state p-6 text-center text-sm text-[var(--muted)]"><div className="empty-icon"><Gift size={62} /></div><h2>Список пуст</h2><p>Киньте ссылку на товар или добавьте мечту вручную.</p><Button className="empty-cta" variant="primary" onClick={() => onCreateManual(false)}>Добавить хотелку</Button></Surface> : null}
+      {mode === "plans" && !plans.length ? <Surface className="empty-state p-6 text-center text-sm text-[var(--muted)]"><div className="empty-icon"><Gift size={62} /></div><h2>Планов пока нет</h2><p>Создайте план для себя, партнёра или общий.</p><Button className="empty-cta" variant="primary" onClick={createPlan}>Создать план</Button></Surface> : null}
     </div>
   );
+}
+
+function PlanCard({ plan, plans, transactions, onChangePlans, onChangeTransactions }: { plan: SharedPlan; plans: SharedPlan[]; transactions: PlanTransaction[]; onChangePlans: (next: SharedPlan[] | ((current: SharedPlan[]) => SharedPlan[])) => void; onChangeTransactions: (next: PlanTransaction[] | ((current: PlanTransaction[]) => PlanTransaction[])) => void }) {
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const stats = calculateSharedPlan(plans, transactions, plan.id);
+  const currency = plan.currency ?? "RUB";
+
+  function addTransaction(type: PlanTransaction["type"]) {
+    const value = numberOrUndefined(amount);
+    if (!value) return;
+    onChangeTransactions((current) => [{ id: crypto.randomUUID(), planId: plan.id, type, amount: value, currency, note: note.trim() || undefined, createdBy: "me", createdAt: new Date().toISOString() }, ...current]);
+    setAmount("");
+    setNote("");
+  }
+
+  return (
+    <Surface className="grid gap-3 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-black">{plan.title}</h2>
+          <p className="text-sm text-[var(--muted)]">{ownerLabel(planOwner(plan))}</p>
+        </div>
+        <Badge>{plan.status === "active" ? "Активно" : "Архив"}</Badge>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-black/[.07]"><div className="h-full rounded-full bg-[var(--accent)]" style={{ width: `${stats.progress * 100}%` }} /></div>
+      <div className="grid grid-cols-2 gap-2 text-sm">
+        <MiniPlanStat label="Цель" value={planMoney(stats.target, currency)} />
+        <MiniPlanStat label="Осталось" value={planMoney(stats.remaining, currency)} />
+      </div>
+      <div className="grid gap-2 sm:grid-cols-[120px_1fr_auto_auto]">
+        <Input inputMode="decimal" placeholder="Сумма" value={amount} onChange={(event) => setAmount(event.target.value)} />
+        <Input placeholder="Заметка" value={note} onChange={(event) => setNote(event.target.value)} />
+        <Button onClick={() => addTransaction("deposit")}>Пополнить</Button>
+        <Button onClick={() => addTransaction("expense")}>Расход</Button>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button onClick={() => onChangePlans((current) => current.map((item) => item.id === plan.id ? { ...item, status: "completed", updatedAt: new Date().toISOString(), revision: item.revision + 1 } : item))}>Завершить</Button>
+        <Button onClick={() => onChangePlans((current) => current.map((item) => item.id === plan.id ? { ...item, status: "archived", updatedAt: new Date().toISOString(), revision: item.revision + 1 } : item))}>В архив</Button>
+      </div>
+    </Surface>
+  );
+}
+
+function MiniPlanStat({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-2xl bg-black/[.035] p-3"><div className="text-xs font-bold uppercase text-[var(--muted)]">{label}</div><div className="font-black">{value}</div></div>;
 }
 
 function updateWishStatus(entry: DiaryEntry, status: WishStatus, onChangeEntries: EntriesSetter) {
   onChangeEntries((current) => current.map((item) => item.id === entry.id ? { ...item, wish: { ...item.wish, status }, updatedAt: new Date().toISOString(), revision: (item.revision ?? 1) + 1 } : item));
 }
+
+function planOwner(plan: SharedPlan): AssignedTo {
+  if (plan.visibility === "shared") return "shared";
+  return plan.createdBy === "partner" ? "partner" : "me";
+}
+
+const ownerOptions: Array<{ label: string; value: AssignedTo }> = [
+  { label: "Моё", value: "me" },
+  { label: "Партнёра", value: "partner" },
+  { label: "Общее", value: "shared" }
+];
 
 function domainFromUrl(url?: string): string | undefined {
   if (!url) return undefined;

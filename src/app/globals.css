@@ -483,16 +483,28 @@ html[data-theme="dark"] .badge {
   font-weight: 790;
 }
 
+.compact-us-header {
+  align-items: center;
+}
+
+.couple-mini-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(96px, 1fr));
+  gap: 8px;
+  width: min(100%, 250px);
+}
+
 .couple-stat-card {
   display: grid;
-  min-height: 150px;
+  min-height: 64px;
   align-content: center;
-  gap: 12px;
-  padding: 24px;
+  gap: 4px;
+  border-radius: 18px;
+  padding: 10px 12px;
 }
 
 .couple-stat-card b {
-  font-size: 54px;
+  font-size: 26px;
   font-weight: 800;
   line-height: 0.95;
 }
@@ -744,12 +756,20 @@ html[data-theme="dark"] .badge {
     width: 100%;
   }
 
+  .compact-us-header {
+    align-items: flex-start;
+  }
+
+  .couple-mini-stats {
+    width: 100%;
+  }
+
   .couple-stat-card {
-    min-height: 132px;
+    min-height: 58px;
   }
 
   .couple-stat-card b {
-    font-size: 48px;
+    font-size: 24px;
   }
 }
 

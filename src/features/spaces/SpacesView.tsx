@@ -42,7 +42,7 @@ export function SpacesView({
 
   if (selectedProject) {
     const tabs = [
-      { label: "Все", value: "all" },
+      { label: "Записи", value: "all" },
       { label: "Дела", value: "task" },
       { label: "Идеи", value: "idea" },
       { label: "Покупки", value: "purchase" },
@@ -80,7 +80,7 @@ export function SpacesView({
           <Button className="px-4 font-bold" onClick={() => { const name = newSpace.trim(); if (!name) return; onCreateSpace(name); setNewSpace(""); }}><Plus size={17} /></Button>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
-          <Button className={`shrink-0 px-4 ${!selectedSpaceId ? "bg-[#16191f] text-white" : ""}`} onClick={() => onSelectSpace(undefined)}>Все</Button>
+          <Button className={`shrink-0 px-4 ${!selectedSpaceId ? "bg-[#16191f] text-white" : ""}`} onClick={() => onSelectSpace(undefined)}>Записи</Button>
           {spaces.map((space) => (
             <Button className={`shrink-0 px-4 ${selectedSpaceId === space.id ? "bg-[#16191f] text-white" : ""}`} key={space.id} onClick={() => onSelectSpace(space.id)}>{space.name}</Button>
           ))}

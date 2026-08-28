@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, CalendarHeart, FileText, Gift, Lightbulb, Search, Settings, Target, WalletCards } from "lucide-react";
+import { Archive, CalendarHeart, FileText, Gift, Lightbulb, Search, Settings, WalletCards } from "lucide-react";
 import { Button, Field, Input, Segmented, Surface } from "@/components/ui/native";
 import { EntryCard } from "@/features/entries/EntryCard";
 import { DocumentsView, ImportantDatesView, LoyaltyCardsView, SharedPlansView } from "@/features/family/FamilyViews";
@@ -91,7 +91,6 @@ export function MoreView({
       </div>
       <MoreGroup title="Вместе">
         <MoreButton title="Хотелки" detail="Моё, партнёра и общее" icon={<Gift size={20} />} onClick={() => onChangeSection("wishlist")} />
-        <MoreButton title="Общие планы" detail="Цели, поездки, копилка" icon={<Target size={20} />} onClick={() => onChangeSection("sharedPlans")} />
         <MoreButton title="Важные даты" detail="Дни рождения, годовщины, события" icon={<CalendarHeart size={20} />} onClick={() => onChangeSection("importantDates")} />
       </MoreGroup>
       <MoreGroup title="Деньги">

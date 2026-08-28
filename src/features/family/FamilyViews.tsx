@@ -38,7 +38,7 @@ export function SharedPlansView({ plans, transactions, defaultCurrency, onChange
 
   return (
     <div className="grid gap-4">
-      <Header eyebrow="Вместе" title="Общие планы" />
+      <Header eyebrow="Вместе" title="Планы" />
       <Surface className="grid gap-3 p-4">
         <div className="grid gap-2 sm:grid-cols-[1fr_160px_auto]">
           <Input placeholder="Отпуск, ремонт, большая покупка" value={title} onChange={(event) => setTitle(event.target.value)} />
@@ -222,7 +222,7 @@ export function DocumentsView({ documents, onChangeDocuments, embedded = false }
 
 function DocumentRow({ item, onDelete }: { item: DocumentItem; onDelete: () => void }) {
   const previewUrl = useMemo(() => item.attachments[0]?.blob ? URL.createObjectURL(item.attachments[0].blob) : undefined, [item.attachments]);
-  return <FamilyRow icon={<FileText size={18} />} title={item.title} meta={`${item.category ?? "документ"} · ${item.owner} · ${item.attachments.length} файл.`} onDelete={onDelete}>{previewUrl ? <a className="button button-plain mt-2 w-fit" href={previewUrl} target="_blank">Открыть файл</a> : null}</FamilyRow>;
+  return <FamilyRow icon={<FileText size={18} />} title={item.title} meta={`${item.category ?? "документ"} · ${ownerLabel(item.owner)} · ${item.attachments.length} файл.`} onDelete={onDelete}>{previewUrl ? <a className="button button-plain mt-2 w-fit" href={previewUrl} target="_blank">Открыть файл</a> : null}</FamilyRow>;
 }
 
 export function LoyaltyCardsView({ cards, onChangeCards, embedded = false }: { cards: LoyaltyCard[]; onChangeCards: Setter<LoyaltyCard>; embedded?: boolean }) {
@@ -251,10 +251,10 @@ export function LoyaltyCardsView({ cards, onChangeCards, embedded = false }: { c
         </div>
       </Surface>
       <div className="grid gap-3 sm:grid-cols-2">
-        {cards.map((card) => <button className="text-left" key={card.id} onClick={() => setSelected(card)} type="button"><Surface className="grid gap-3 p-4"><div className="flex items-center justify-between"><h2 className="text-lg font-black">{card.title}</h2><Maximize2 size={18} /></div><Barcode value={card.barcodeValue} /><p className="text-sm text-[var(--muted)]">{card.owner}</p></Surface></button>)}
+        {cards.map((card) => <button className="text-left" key={card.id} onClick={() => setSelected(card)} type="button"><Surface className="grid gap-3 p-4"><div className="flex items-center justify-between"><h2 className="text-lg font-black">{card.title}</h2><Maximize2 size={18} /></div><Barcode value={card.barcodeValue} /><p className="text-sm text-[var(--muted)]">{ownerLabel(card.owner)}</p></Surface></button>)}
       </div>
       {!cards.length ? <Empty icon={<CreditCard size={56} />} title="Карт пока нет" text="Сохрани карты лояльности и штрих-коды, чтобы быстро открыть их офлайн." /> : null}
-      {selected ? <div className="fixed inset-0 z-[85] grid place-items-center bg-white p-5 text-black"><button aria-label="Закрыть" className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-black/10" onClick={() => setSelected(null)} type="button"><X size={20} /></button><div className="grid w-full max-w-lg gap-6 text-center"><h1 className="text-3xl font-black">{selected.title}</h1><Barcode large value={selected.barcodeValue} /><div className="break-all font-mono text-lg">{selected.barcodeValue}</div><Button onClick={() => undefined}>Яркость на максимум вручную</Button></div></div> : null}
+      {selected ? <div className="fixed inset-0 z-[85] grid place-items-center bg-white p-5 text-black"><button aria-label="Закрыть" className="absolute right-4 top-4 grid h-11 w-11 place-items-center rounded-full bg-black/10" onClick={() => setSelected(null)} type="button"><X size={20} /></button><div className="grid w-full max-w-lg gap-6 text-center"><h1 className="text-3xl font-black">{selected.title}</h1><Barcode large value={selected.barcodeValue} /><div className="break-all font-mono text-lg">{selected.barcodeValue}</div><Button variant="danger" onClick={() => { onChangeCards((current) => current.filter((card) => card.id !== selected.id)); setSelected(null); }}>Удалить карту</Button></div></div> : null}
     </div>
   );
 }
@@ -277,7 +277,13 @@ function FamilyRow({ children, icon, meta, onDelete, title }: { children?: React
 }
 
 function OwnerSelect({ value, onChange }: { value: Owner; onChange: (value: Owner) => void }) {
-  return <Select value={value} onChange={(event) => onChange(event.target.value as Owner)}><option value="me">Моё</option><option value="partner">Партнёр</option><option value="shared">Общее</option></Select>;
+  return <Select value={value} onChange={(event) => onChange(event.target.value as Owner)}><option value="me">Моё</option><option value="partner">Партнёра</option><option value="shared">Общее</option></Select>;
+}
+
+function ownerLabel(owner: Owner) {
+  if (owner === "shared") return "Общее";
+  if (owner === "partner") return "Партнёра";
+  return "Моё";
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

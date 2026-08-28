@@ -2,13 +2,13 @@
 
 import { Segmented, Surface } from "@/components/ui/native";
 import { EntryCard } from "@/features/entries/EntryCard";
-import { purchaseStatus } from "@/features/shared/entry-utils";
+import { purchaseStatusGroup } from "@/features/shared/entry-utils";
 import { Button } from "@/components/ui/native";
 import { Plus } from "lucide-react";
-import type { DiaryEntry, Member, PurchaseStatus, Space } from "@/lib/types";
+import type { DiaryEntry, Member, Space } from "@/lib/types";
 
-export function PurchasesView({ entries, members, spaces, status, onAdd, onStatusChange, onComplete, onOpen }: { entries: DiaryEntry[]; members: Member[]; spaces: Space[]; status: PurchaseStatus; onAdd: () => void; onStatusChange: (status: PurchaseStatus) => void; onComplete: (entry: DiaryEntry) => void; onOpen: (entry: DiaryEntry) => void }) {
-  const visible = entries.filter((entry) => entry.kind === "purchase" && entry.status !== "cancelled" && purchaseStatus(entry) === status);
+export function PurchasesView({ entries, members, spaces, status, onAdd, onStatusChange, onComplete, onOpen }: { entries: DiaryEntry[]; members: Member[]; spaces: Space[]; status: "planned" | "ordered" | "purchased"; onAdd: () => void; onStatusChange: (status: "planned" | "ordered" | "purchased") => void; onComplete: (entry: DiaryEntry) => void; onOpen: (entry: DiaryEntry) => void }) {
+  const visible = entries.filter((entry) => entry.kind === "purchase" && entry.status !== "cancelled" && purchaseStatusGroup(entry) === status).sort((a, b) => Number(b.priority === "high") - Number(a.priority === "high"));
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -23,7 +23,6 @@ export function PurchasesView({ entries, members, spaces, status, onAdd, onStatu
         onChange={onStatusChange}
         options={[
           { label: "Нужно", value: "planned" },
-          { label: "Выбрано", value: "selected" },
           { label: "Заказано", value: "ordered" },
           { label: "Куплено", value: "purchased" }
         ]}

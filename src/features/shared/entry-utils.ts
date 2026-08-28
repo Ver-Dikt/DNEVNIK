@@ -1,4 +1,4 @@
-import type { AssignedTo, DiaryEntry, EntryKind, EntryStatus, Member, PurchaseStatus, Space, WishStatus } from "@/lib/types";
+import type { AssignedTo, DiaryEntry, EntryKind, EntryStatus, PurchaseStatus, Space, WishStatus } from "@/lib/types";
 
 export const kindLabels: Record<EntryKind, string> = {
   task: "Дело",
@@ -9,11 +9,9 @@ export const kindLabels: Record<EntryKind, string> = {
   inbox: "Разобрать"
 };
 
-export function ownerLabel(owner?: AssignedTo, members: Member[] = []): string {
-  const member = members.find((item) => item.id === owner);
-  if (member?.name) return member.name;
+export function ownerLabel(owner?: AssignedTo): string {
   if (owner === "shared") return "Общее";
-  if (owner === "partner") return "Партнёр";
+  if (owner === "partner") return "Партнёра";
   return "Моё";
 }
 
@@ -34,6 +32,13 @@ export function purchaseStatus(entry: DiaryEntry): PurchaseStatus {
   if (entry.status === "ordered") return "ordered";
   if (entry.status === "bought" || entry.status === "done") return "purchased";
   if (entry.status === "researching") return "researching";
+  return "planned";
+}
+
+export function purchaseStatusGroup(entry: DiaryEntry): "planned" | "ordered" | "purchased" {
+  const status = purchaseStatus(entry);
+  if (status === "ordered") return "ordered";
+  if (status === "purchased") return "purchased";
   return "planned";
 }
 

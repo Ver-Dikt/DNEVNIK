@@ -6,7 +6,7 @@ import { Button, Segmented, Surface } from "@/components/ui/native";
 import { EntryCard } from "@/features/entries/EntryCard";
 import { calculateSharedPlan, money as formatMoney } from "@/features/family/shared-plan-utils";
 import { addDays, addMonths, formatHeaderDate, getMonthGrid, getWeekDays, isPast, isToday, sameMonth, shortWeekday } from "@/features/shared/date-utils";
-import { matchesOwner, ownerLabel } from "@/features/shared/entry-utils";
+import { matchesOwner } from "@/features/shared/entry-utils";
 import type { CalendarEvent, DiaryEntry, ImportantDate, Member, PlanTransaction, SharedPlan, Space } from "@/lib/types";
 
 export function PlanView({
@@ -110,9 +110,9 @@ export function PlanView({
       <Segmented
         onChange={onOwnerFilterChange}
         options={[
-          { label: "Общее", value: "shared" },
-          { label: ownerLabel("me", members), value: "me" },
-          { label: ownerLabel("partner", members), value: "partner" }
+          { label: "Моё", value: "me" },
+          { label: "Партнёра", value: "partner" },
+          { label: "Общее", value: "shared" }
         ]}
         value={ownerFilter}
       />
@@ -180,7 +180,7 @@ function SummaryStrip({ activePlan, importantDate, planTransactions, purchasesCo
       <Surface className="summary-card">
         <span>Общий план</span>
         <b>{activePlan ? activePlan.title : "Нет активного"}</b>
-        <small>{activePlan && planStats ? `${formatMoney(planStats.saved, activePlan.currency ?? "RUB")} накоплено` : "Открой Общие планы"}</small>
+        <small>{activePlan && planStats ? `${formatMoney(planStats.saved, activePlan.currency ?? "RUB")} накоплено` : "Открой Планы"}</small>
       </Surface>
       <Surface className="summary-card">
         <span>Покупки</span>
