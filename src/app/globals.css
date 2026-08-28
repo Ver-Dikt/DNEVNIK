@@ -50,6 +50,7 @@ input,
 textarea,
 select {
   font: inherit;
+  color-scheme: dark;
 }
 
 button {
@@ -133,6 +134,37 @@ button:disabled {
   outline: none;
 }
 
+.select-control {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--surface-soft);
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 19px) 50%,
+    calc(100% - 13px) 50%;
+  background-repeat: no-repeat;
+  background-size: 6px 6px;
+  padding-right: 40px;
+}
+
+.select-control option {
+  background: var(--surface);
+  color: var(--foreground);
+}
+
+input[type="date"],
+input[type="time"] {
+  color-scheme: dark;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  opacity: 0.72;
+  filter: invert(1);
+}
+
 .input:focus {
   border-color: rgba(23, 107, 91, 0.42);
   box-shadow: 0 0 0 4px rgba(23, 107, 91, 0.1);
@@ -172,6 +204,15 @@ button:disabled {
   background: #303542;
   color: var(--foreground);
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+.status-segmented {
+  width: 100%;
+}
+
+.status-segmented button {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .badge {
@@ -261,7 +302,7 @@ button:disabled {
 
 .calendar-day.selected span,
 .calendar-day.selected .text-\[var\(--muted\)\] {
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(15, 17, 21, 0.64);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -326,6 +367,18 @@ html[data-theme="light"] .calendar-day {
 html[data-theme="light"] .segmented,
 html[data-theme="light"] .badge {
   background: rgba(20, 22, 26, 0.055);
+}
+
+html[data-theme="light"] button,
+html[data-theme="light"] input,
+html[data-theme="light"] textarea,
+html[data-theme="light"] select {
+  color-scheme: light;
+}
+
+html[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator,
+html[data-theme="light"] input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: none;
 }
 
 html[data-theme="dark"] {
@@ -608,6 +661,19 @@ html[data-theme="dark"] .badge {
     min-height: 46px;
     padding: 0 3px;
     font-size: 14px;
+  }
+
+  .status-segmented {
+    overflow-x: auto;
+  }
+
+  .status-segmented button {
+    flex: 0 0 auto;
+    min-width: max-content;
+    padding: 0 8px;
+    overflow: visible;
+    text-overflow: clip;
+    font-size: 12px;
   }
 
   .button {

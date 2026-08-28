@@ -27,12 +27,22 @@ export function Textarea({ className = "", ...props }: TextareaHTMLAttributes<HT
 }
 
 export function Select({ className = "", ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select className={`input ${className}`} {...props} />;
+  return <select className={`input select-control ${className}`} {...props} />;
 }
 
-export function Segmented<T extends string>({ options, value, onChange }: { options: Array<{ label: string; value: T }>; value: T; onChange: (value: T) => void }) {
+export function Segmented<T extends string>({
+  className = "",
+  options,
+  value,
+  onChange
+}: {
+  className?: string;
+  options: Array<{ label: string; value: T }>;
+  value: T;
+  onChange: (value: T) => void;
+}) {
   return (
-    <div className="segmented" role="tablist">
+    <div className={`segmented ${className}`} role="tablist">
       {options.map((option) => (
         <button className={option.value === value ? "active" : ""} key={option.value} onClick={() => onChange(option.value)} type="button">
           {option.label}

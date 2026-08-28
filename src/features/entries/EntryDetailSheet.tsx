@@ -169,8 +169,9 @@ export function EntryDetailSheet({
           </div>
 
           {entry.kind === "purchase" ? (
-            <div className="grid gap-3 rounded-3xl bg-[#f6faf8] p-3">
+            <div className="grid gap-3 rounded-3xl border border-[var(--line)] bg-[var(--surface-soft)] p-3">
               <Segmented
+                className="status-segmented"
                 value={currentPurchaseStatus}
                 onChange={(status: PurchaseStatus) => onChange({ purchase: { ...entry.purchase, status }, status: purchaseStatusToEntryStatus(status) })}
                 options={[
@@ -185,14 +186,15 @@ export function EntryDetailSheet({
           ) : null}
 
           {entry.kind === "wish" ? (
-            <div className="grid gap-3 rounded-3xl bg-[#faf7ff] p-3">
+            <div className="grid gap-3 rounded-3xl border border-[var(--line)] bg-[var(--surface-soft)] p-3">
               <Segmented
+                className="status-segmented"
                 value={currentWishStatus}
                 onChange={(status: WishStatus) => onChange({ wish: { ...entry.wish, status } })}
                 options={[
                   { label: "Сохранено", value: "saved" },
                   { label: "Думаем", value: "considering" },
-                  { label: "В план", value: "planned" },
+                  { label: "План", value: "planned" },
                   { label: "Куплено", value: "purchased" }
                 ]}
               />

@@ -61,7 +61,7 @@ export function CaptureSheet({
               <Button className="px-4 font-bold" onClick={onSaveAll} variant="primary">Сохранить всё</Button>
             </div>
             {preview.items.map((item, index) => (
-              <div className="rounded-3xl border border-black/5 bg-white p-3 shadow-sm" key={`${item.title}-${index}`}>
+              <div className="rounded-3xl border border-[var(--line)] bg-[var(--surface-soft)] p-3 shadow-sm" key={`${item.title}-${index}`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <span className="badge">{kindLabels[item.kind]}</span>

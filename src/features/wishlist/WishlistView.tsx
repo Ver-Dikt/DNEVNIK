@@ -94,7 +94,7 @@ export function WishlistView({ entries, members, onChangeEntries, onComplete, on
         {draft ? (
           <div className="grid gap-3 rounded-2xl bg-black/[.035] p-3 sm:grid-cols-[96px_1fr]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            {draft.imageUrl ? <img alt="" className="h-24 w-24 rounded-2xl object-cover" src={draft.imageUrl} /> : <div className="grid h-24 w-24 place-items-center rounded-2xl bg-white text-sm text-[var(--muted)]">URL</div>}
+            {draft.imageUrl ? <img alt="" className="h-24 w-24 rounded-2xl object-cover" src={draft.imageUrl} /> : <div className="grid h-24 w-24 place-items-center rounded-2xl bg-[var(--surface-soft)] text-sm text-[var(--muted)]">URL</div>}
             <div className="grid gap-2">
               {metadataFailed ? <p className="text-sm font-bold text-[#a15c00]">Не удалось получить данные товара. Ссылка сохранится, поля можно заполнить вручную.</p> : null}
               <Field label="Название"><Input value={draft.title ?? ""} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></Field>
