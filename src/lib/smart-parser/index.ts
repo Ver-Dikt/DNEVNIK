@@ -55,7 +55,7 @@ function parseSegment(segment: string, originalInput: string, context: ParserCon
   const projectCandidate = projectName ? undefined : detectProjectCandidate(originalInput, area, existingProjectNames);
   const isVagueReference = /(эту штуку|эта штука|на аппарате|то самое)/i.test(segment);
 
-  const priceTotal = price.unitPrice && quantity.quantity && quantity.confidence >= 0.75 ? price.unitPrice * quantity.quantity : price.totalPrice;
+  const priceTotal = /^по\s/i.test(price.matchedText ?? "") && price.unitPrice && quantity.quantity && quantity.confidence >= 0.75 ? price.unitPrice * quantity.quantity : price.totalPrice;
   const confidence = combineConfidence([
     intent.confidence,
     domain.confidence,
@@ -179,8 +179,8 @@ function refineTitle(title: string, kind: string, area: string): string {
   if (musicMix) next = `Свести трек ${musicMix[1]}`;
   const musicMaster = next.match(/^по\s+(.+?)\s+еще\s+мастер\s+сделать$/i);
   if (musicMaster) next = `Сделать мастер ${musicMaster[1]}`;
-  if (kind === "purchase" && !/^купить\b/i.test(next)) next = `Купить ${next[0]?.toLowerCase() ?? ""}${next.slice(1)}`;
-  if (area === "Музыка") next = next.replace(/\bсведение\b/i, "свести");
+  if (kind === "purchase" && !/^купить(?:\s|$)/i.test(next)) next = `Купить ${next[0]?.toLowerCase() ?? ""}${next.slice(1)}`;
+  if (area === "Музыка") next = next.replace(/(?<![\p{L}])сведение(?![\p{L}])/iu, "свести");
   return next ? next[0].toUpperCase() + next.slice(1) : title;
 }
 

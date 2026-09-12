@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { Mic, Square, WandSparkles, X } from "lucide-react";
 import { Button, Surface, Textarea } from "@/components/ui/native";
 import type { AIParseResult } from "@/lib/types";
@@ -32,9 +33,25 @@ export function CaptureSheet({
   onEditPreview: (index: number) => void;
   onRemovePreview: (index: number) => void;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const oldOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+      if (event.key !== "Tab") return;
+      const controls = panelRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled), textarea, input, [tabindex=\"0\"]");
+      if (!controls?.length) return;
+      const first = controls[0], last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => { document.body.style.overflow = oldOverflow; document.removeEventListener("keydown", onKey); };
+  }, [onClose]);
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/30 px-3 pb-[calc(10px+env(safe-area-inset-bottom))] backdrop-blur-sm" onClick={onClose}>
-      <Surface className="max-h-[calc(100dvh_-_24px_-_env(safe-area-inset-bottom))] w-full max-w-xl overflow-auto p-4" onClick={(event) => event.stopPropagation()}>
+    <div ref={panelRef} className="fixed inset-0 z-[70] flex items-end justify-center bg-black/30 px-3 pb-[calc(10px+env(safe-area-inset-bottom))] backdrop-blur-sm" onClick={onClose}>
+      <Surface role="dialog" aria-modal="true" aria-label="Добавить запись" className="max-h-[calc(100dvh_-_24px_-_env(safe-area-inset-bottom))] w-full max-w-xl overflow-auto p-4" onClick={(event) => event.stopPropagation()}>
         <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-black/15" />
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-2xl font-black">Добавить</h2>
@@ -47,13 +64,14 @@ export function CaptureSheet({
           <Button className={`h-14 p-0 ${isListening ? "bg-[#ffe5e9] text-[#b4233a]" : ""}`} onClick={onToggleVoice} aria-label={isListening ? "Остановить запись" : "Начать запись"}>
             {isListening ? <Square size={20} /> : <Mic size={22} />}
           </Button>
-          <Button className="h-14 font-black" disabled={!text.trim() || isParsing} onClick={onParse} variant="primary">
+          <Button className="h-14 font-black" disabled={!text.trim() || isParsing || isListening} onClick={onParse} variant="primary">
             <WandSparkles size={18} />
             {isParsing ? "Разбираю..." : "Разобрать"}
           </Button>
         </div>
-        {voiceMessage ? <p className="mt-2 text-sm text-[var(--muted)]">{voiceMessage}</p> : null}
+        {voiceMessage ? <p role="status" aria-live="polite" className="mt-2 text-sm text-[var(--muted)]">{voiceMessage}</p> : null}
 
+        <p className="mt-2 text-xs text-[var(--muted)]">Черновик восстанавливается при повторном открытии. Остановите микрофон перед разбором.</p>
         {preview ? (
           <div className="mt-5 grid gap-3">
             <div className="flex items-center justify-between">
@@ -74,7 +92,7 @@ export function CaptureSheet({
                 <div className="mt-2 grid gap-1 text-sm text-[var(--muted)]">
                   <span>{item.area ?? "Без пространства"}{item.project || item.projectCandidate ? ` · ${item.project ?? item.projectCandidate}` : ""}</span>
                   <span>{item.dueDate ?? item.schedule}{item.time ? ` · ${item.time}` : ""}</span>
-                  {item.quantity || item.totalPrice || item.unitPrice ? <span>{item.quantity ? `${item.quantity} × ` : ""}{item.unitPrice ?? item.totalPrice} {item.currency ?? "RUB"}</span> : null}
+                  {item.quantity || item.totalPrice || item.unitPrice ? <span>{item.quantity ? `Количество: ${item.quantity}. ` : ""}{item.totalPrice ? `Всего: ${item.totalPrice} ${item.currency ?? "RUB"}` : item.unitPrice ? `Цена: ${item.unitPrice} ${item.currency ?? "RUB"}` : ""}</span> : null}
                   {item.url ? <span className="truncate">{item.url}</span> : null}
                 </div>
                 <Button className="mt-3 w-full font-bold" onClick={() => onEditPreview(index)}>Исправить поля</Button>

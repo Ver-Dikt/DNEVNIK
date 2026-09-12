@@ -345,8 +345,14 @@ export function exportDnevnikData() {
 
 export function importDnevnikData(data: unknown): boolean {
   if (!data || typeof data !== "object") return false;
-  const next = data as Partial<ReturnType<typeof exportDnevnikData>>;
-  if (!Array.isArray(next.entries)) return false;
+  const next = data as Partial<ReturnType<typeof exportDnevnikData>> & { financeTransactions?: FinanceTransaction[]; savingsGoals?: SavingsGoal[]; draft?: DraftState; preview?: PreviewState };
+  if (!Array.isArray(next.entries) || !next.entries.every(entry => entry && typeof entry.id === "string" && typeof entry.title === "string" && typeof entry.kind === "string")) return false;
+  const collections = [next.projects, next.spaces, next.members, next.financeTransactions, next.finance, next.savingsGoals, next.savings, next.sharedPlans, next.planTransactions, next.importantDates, next.calendarEvents, next.documents, next.loyaltyCards];
+  if (collections.some(items => items !== undefined && (!Array.isArray(items) || !items.every(item => item && typeof item.id === "string")))) return false;
+  next.finance = next.financeTransactions ?? next.finance;
+  next.savings = next.savingsGoals ?? next.savings;
+  saveDraft(next.draft ?? null);
+  savePreviewState(next.preview ?? null);
   localStorage.setItem(entriesKey, JSON.stringify(next.entries.map(normalizeEntry)));
   localStorage.setItem(projectsKey, JSON.stringify(Array.isArray(next.projects) ? next.projects : []));
   localStorage.setItem(areasKey, JSON.stringify(Array.isArray(next.areas) ? next.areas : defaultAreas));
@@ -399,9 +405,9 @@ export function storageVersion(): string {
 
 function readJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
-  const raw = localStorage.getItem(key);
-  if (!raw) return fallback;
   try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
     return JSON.parse(raw) as T;
   } catch {
     return fallback;
@@ -441,10 +447,10 @@ function migrateStorage(): void {
 
   localStorage.setItem(entriesKey, JSON.stringify(migratedEntries));
   localStorage.setItem(projectsKey, JSON.stringify([...projectMap.values(), ...previous.projects]));
-  localStorage.setItem(areasKey, JSON.stringify(defaultAreas));
+  localStorage.setItem(areasKey, JSON.stringify(readJson<Area[]>(areasKey, defaultAreas)));
   localStorage.setItem(spacesKey, JSON.stringify(previous.spaces.length ? previous.spaces : defaultSpaces));
-  localStorage.setItem(membersKey, JSON.stringify(defaultMembers));
-  localStorage.setItem(knowledgeKey, JSON.stringify(defaultKnowledge));
+  localStorage.setItem(membersKey, JSON.stringify(readJson<Member[]>(membersKey, defaultMembers)));
+  localStorage.setItem(knowledgeKey, JSON.stringify(readJson<KnowledgeStore>(knowledgeKey, defaultKnowledge)));
   localStorage.setItem(financeKey, JSON.stringify(readJson<FinanceTransaction[]>(financeKey, [])));
   localStorage.setItem(savingsKey, JSON.stringify(readJson<SavingsGoal[]>(savingsKey, [])));
   localStorage.setItem(sharedPlansKey, JSON.stringify(readJson<SharedPlan[]>(sharedPlansKey, [])));

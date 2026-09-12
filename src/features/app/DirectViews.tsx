@@ -216,7 +216,8 @@ export function SettingsView({ importantDates, members, onChangeImportantDates, 
         </Field>
       </Surface>
       <Surface className="grid gap-3 p-4">
-        <h2 className="text-lg font-black">Данные</h2>
+        <h2 className="text-lg font-black">Данные и резервная копия</h2>
+        <p className="text-sm text-[var(--muted)]">Записи хранятся в этом браузере. Локальная версия и сайт имеют отдельную память. Экспортируйте JSON для переноса или восстановления; приватный режим и очистка данных браузера могут удалить записи.</p>
         <div className="grid gap-2 sm:grid-cols-2">
           <Button onClick={onExport}>Экспорт JSON</Button>
           <label className="button button-plain">

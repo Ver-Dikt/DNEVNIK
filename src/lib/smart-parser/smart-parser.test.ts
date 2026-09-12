@@ -338,3 +338,20 @@ describe("parseSmartInput", () => {
     expect(result.items[0]?.area).toBe("Студия");
   });
 });
+
+describe("voice capture regressions", () => {
+  it("cleans Russian intent and date words without repeating Купить", () => {
+    const item = parseSmartInput("Завтра купить молоко 2 литра за 180 рублей", ctx).items[0];
+    expect(item.title).toBe("Купить молоко 2 литра за 180 рублей");
+    expect(item.totalPrice).toBe(180);
+    expect(item.quantity).toBe(2);
+  });
+  it("does not treat quantity as price", () => {
+    const item = parseSmartInput("Купить молоко 2 литра", ctx).items[0];
+    expect(item.unitPrice).toBeUndefined();
+    expect(item.totalPrice).toBeUndefined();
+  });
+  it("finds currency after a product quantity", () => {
+    expect(parseSmartInput("Купить молоко 2 литра 180 рублей", ctx).items[0].totalPrice).toBe(180);
+  });
+});

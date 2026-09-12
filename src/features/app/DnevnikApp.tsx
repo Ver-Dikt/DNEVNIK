@@ -1,8 +1,10 @@
 "use client";
 
+import { Mic, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DesktopNav, MobileNav } from "@/components/navigation/AppNav";
 import { Button, Surface } from "@/components/ui/native";
+import { kindLabels } from "@/features/shared/entry-utils";
 import { CaptureSheet } from "@/features/capture/CaptureSheet";
 import { EntryDetailSheet } from "@/features/entries/EntryDetailSheet";
 import { IdeasView, MoneyView, SettingsView, TasksView, UsView, WorkView } from "@/features/app/DirectViews";
@@ -46,6 +48,7 @@ const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export function DnevnikApp() {
   const data = useDnevnikData();
+  const [search, setSearch] = useState("");
   const [screen, setScreen] = useState<ScreenId>("us");
   const [ownerFilter, setOwnerFilter] = useState<"me" | "partner" | "shared">("shared");
   const [selectedDate, setSelectedDate] = useState(todayIso());
@@ -115,12 +118,9 @@ export function DnevnikApp() {
     if (!("serviceWorker" in navigator)) return;
     const swUrl = `${appBasePath}/sw.js`;
     const swScope = `${appBasePath || ""}/`;
-    let refreshing = false;
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (refreshing) return;
-      refreshing = true;
-      window.location.reload();
-    });
+    // Updating must never interrupt a draft or microphone session.
+    const onControllerChange = () => setToast({ title: "Обновление установлено", detail: "Откройте приложение заново, когда закончите ввод." });
+    navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
     navigator.serviceWorker.register(swUrl, { scope: swScope }).then((registration) => {
       void registration.update();
       registration.addEventListener("updatefound", () => {
@@ -132,6 +132,12 @@ export function DnevnikApp() {
         });
       });
     }).catch(() => undefined);
+    return () => navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+  }, []);
+
+  useEffect(() => () => {
+    keepListeningRef.current = false;
+    recognitionRef.current?.abort();
   }, []);
 
   const selectedEntry = useMemo(() => data.entries.find((entry) => entry.id === detailId) ?? null, [data.entries, detailId]);
@@ -297,11 +303,15 @@ export function DnevnikApp() {
   }
 
   function toggleVoice() {
-    if (isListening) {
+    if (isListening || recognitionRef.current) {
       keepListeningRef.current = false;
       recognitionRef.current?.stop();
       setIsListening(false);
       setVoiceMessage("Запись остановлена. Теперь можно разобрать текст.");
+      return;
+    }
+    if (!window.isSecureContext) {
+      setVoiceMessage("Для микрофона откройте приложение по HTTPS или на localhost.");
       return;
     }
     const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
@@ -320,6 +330,8 @@ export function DnevnikApp() {
     recognition.lang = "ru-RU";
     recognition.interimResults = true;
     recognition.continuous = true;
+    setIsListening(true);
+    setVoiceMessage("Подключаю микрофон…");
     recognition.onstart = () => {
       setIsListening(true);
       setVoiceMessage("Слушаю. Можно делать паузы.");
@@ -337,7 +349,13 @@ export function DnevnikApp() {
       }
       keepListeningRef.current = false;
       setIsListening(false);
-      setVoiceMessage("Не удалось распознать речь. Текстовый ввод работает.");
+      const messages: Record<string, string> = {
+        "not-allowed": "Микрофон запрещён. Разрешите доступ в настройках сайта возле адресной строки и нажмите микрофон снова.",
+        "service-not-allowed": "Распознавание заблокировано браузером. Попробуйте Chrome или Edge, либо диктовку клавиатуры.",
+        "audio-capture": "Микрофон не найден или занят. Проверьте устройство ввода.",
+        network: "Нет связи со службой распознавания. Проверьте интернет. Надиктованный текст остаётся здесь."
+      };
+      setVoiceMessage(messages[event.error] ?? "Распознавание остановлено. Текст сохранён в поле; можно продолжить вручную.");
     };
     recognition.onresult = (event) => {
       const transcript = Array.from(event.results).map((result) => result[0].transcript).join(" ").trim();
@@ -348,7 +366,10 @@ export function DnevnikApp() {
     try {
       recognition.start();
     } catch {
-      setVoiceMessage("Голосовой ввод уже запускается.");
+      recognitionRef.current = null;
+      keepListeningRef.current = false;
+      setIsListening(false);
+      setVoiceMessage("Не удалось запустить микрофон. Попробуйте ещё раз.");
     }
   }
 
@@ -395,14 +416,14 @@ export function DnevnikApp() {
     const rule = rememberIntentRule(entry.sourceText.slice(0, 48).toLowerCase(), entry.kind);
     const next = [rule, ...learnedRules].slice(0, 80);
     setLearnedRules(next);
-    saveLearnedRules(next);
+    try { saveLearnedRules(next); } catch { setToast({ title: "Память браузера недоступна", detail: "Сделайте экспорт данных." }); }
     data.setKnowledge((current) => ({ ...current, corrections: [{ id: crypto.randomUUID(), phrase: entry.sourceText ?? entry.title, patch: { kind: entry.kind, area: entry.area, project: entry.project, spaceId: entry.spaceId, projectId: entry.projectId }, createdAt: new Date().toISOString() }, ...current.corrections] }));
     updateEntry(entry.id, { needsReview: false });
     setToast({ title: "Запомнил", detail: "Похожую запись будет проще разобрать." });
   }
 
   async function exportData() {
-    const exported = await data.exportData();
+    const exported = { ...await data.exportData(), learnedRules };
     const blob = new Blob([JSON.stringify(exported, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -414,9 +435,21 @@ export function DnevnikApp() {
 
   function importData(file: File) {
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
-        const ok = data.importData(JSON.parse(String(reader.result)));
+        const imported = JSON.parse(String(reader.result));
+        if (!imported || !Array.isArray(imported.entries)) throw new Error("Invalid backup");
+        if (!window.confirm("Импорт заменит текущие данные. Сначала будет скачана резервная копия текущего ежедневника. Продолжить?")) return;
+        await exportData();
+        const ok = data.importData(imported);
+        if (ok) {
+          setQuickText(imported.draft?.quickText ?? "");
+          setPreview(imported.preview?.preview ?? null);
+          if (Array.isArray(imported.learnedRules)) {
+            setLearnedRules(imported.learnedRules);
+            try { saveLearnedRules(imported.learnedRules); } catch {}
+          }
+        }
         setToast({ title: ok ? "Импорт выполнен" : "Импорт не выполнен" });
       } catch {
         setToast({ title: "Импорт не выполнен", detail: "Файл не похож на экспорт." });
@@ -433,6 +466,11 @@ export function DnevnikApp() {
     <main className="mx-auto grid min-h-screen w-full max-w-7xl gap-5 px-4 pb-28 pt-4 md:grid-cols-[220px_minmax(0,1fr)] md:px-6 md:pb-8">
       <DesktopNav active={screen} onChange={navigate} />
       <div className="min-w-0">
+        <div className="mb-4 flex items-center gap-2">
+          <label className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-3 py-3"><Search size={18} aria-hidden="true" /><input aria-label="Поиск по всем записям" placeholder="Найти запись…" className="min-w-0 w-full bg-transparent outline-none" value={search} onChange={event => setSearch(event.target.value)} /></label>
+          <Button onClick={() => setCaptureOpen(true)} variant="primary" aria-label="Быстрый ввод: текст или голос"><Mic size={20} />Добавить</Button>
+        </div>
+        {search.trim() ? <Surface className="mb-4 grid gap-2 p-3">{data.entries.filter(entry => `${entry.title} ${entry.description ?? ""} ${entry.project ?? ""} ${entry.area ?? ""}`.toLocaleLowerCase("ru").includes(search.trim().toLocaleLowerCase("ru"))).map(entry => <button className="rounded-xl p-3 text-left hover:bg-[var(--surface-soft)]" key={entry.id} onClick={() => setDetailId(entry.id)}><b>{entry.title}</b><span className="block text-xs text-[var(--muted)]">{entry.area ?? "Личное"} · {kindLabels[entry.kind] ?? "Запись"}</span></button>)}<p className="text-xs text-[var(--muted)]">Поиск включает завершённые записи. Откройте результат для редактирования.</p></Surface> : null}
         {data.status.warning ? <Surface className="mb-4 p-3 text-sm text-[#a15c00]">{data.status.warning}</Surface> : null}
         {screen === "plan" ? (
           <PlanView calendarEvents={data.calendarEvents} entries={data.entries} importantDates={data.importantDates} members={data.members} planTransactions={data.planTransactions} sharedPlans={data.sharedPlans} spaces={data.spaces} ownerFilter={ownerFilter} mode={planMode} selectedDate={selectedDate} onModeChange={setMode} onDateChange={setSelectedDate} onOwnerFilterChange={setOwnerFilter} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} onAdd={() => setCaptureOpen(true)} />
@@ -462,7 +500,7 @@ export function DnevnikApp() {
           <IdeasView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={() => createManualEntry("idea")} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
         {screen === "settings" ? (
-          <SettingsView importantDates={data.importantDates} members={data.members} settings={data.settings} onChangeImportantDates={data.setImportantDates} onChangeMembers={data.setMembers} onChangeSettings={data.setSettings} onClearAll={data.clearEverything} onClearEntries={data.clearEntries} onExport={exportData} onImport={importData} />
+          <SettingsView importantDates={data.importantDates} members={data.members} settings={data.settings} onChangeImportantDates={data.setImportantDates} onChangeMembers={data.setMembers} onChangeSettings={data.setSettings} onClearAll={() => { if (window.confirm("Удалить все данные ежедневника? Перед этим сохраните экспорт JSON.")) data.clearEverything(); }} onClearEntries={() => { if (window.confirm("Удалить все записи? Перед этим сохраните экспорт JSON.")) data.clearEntries(); }} onExport={exportData} onImport={importData} />
         ) : null}
       </div>
 

@@ -6,10 +6,11 @@ const learnedRulesKey = "dnevnik.learnedRules";
 
 export function loadLearnedRules(): LearnedRule[] {
   if (typeof window === "undefined") return [];
-  const raw = localStorage.getItem(learnedRulesKey);
-  if (!raw) return [];
   try {
-    return JSON.parse(raw) as LearnedRule[];
+    const raw = localStorage.getItem(learnedRulesKey);
+    if (!raw) return [];
+    const rules = JSON.parse(raw);
+    return Array.isArray(rules) ? rules : [];
   } catch {
     return [];
   }

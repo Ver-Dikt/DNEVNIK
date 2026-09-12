@@ -10,7 +10,7 @@ echo.
 
 if not exist "node_modules" (
   echo node_modules not found. Installing dependencies...
-  npm install
+  call npm install
   if errorlevel 1 (
     echo.
     echo npm install failed.
@@ -21,7 +21,7 @@ if not exist "node_modules" (
 
 echo.
 echo Building local preview...
-npm run build
+call npm run build
 if errorlevel 1 (
   echo.
   echo Build failed.
@@ -36,6 +36,6 @@ echo.
 echo Press Ctrl+C in this window to stop the local server.
 echo.
 
-npm run start -- --hostname 127.0.0.1 --port 3000
+call npm run start -- --hostname 127.0.0.1 --port 3000
 
 pause

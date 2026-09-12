@@ -1,4 +1,4 @@
-const CACHE_NAME = "dnevnik-v12-ux-cleanup";
+const CACHE_NAME = "dnevnik-v13-reliable-capture";
 const scopePath = new URL(self.registration.scope).pathname;
 const BASE_PATH = scopePath.endsWith("/") ? scopePath.slice(0, -1) : scopePath;
 const APP_SHELL = [
@@ -15,30 +15,41 @@ self.addEventListener("message", (event) => {
 });
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL.map((url) => new Request(url, { cache: "reload" }))).catch(() => undefined)));
-  self.skipWaiting();
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.addAll(APP_SHELL.map((url) => new Request(new URL(url, self.registration.scope), { cache: "reload" })));
+    const shell = await cache.match(APP_SHELL[0]);
+    const html = await shell.text();
+    const assets = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
+      .map(match => new URL(match[1], self.registration.scope))
+      .filter(url => url.origin === self.location.origin && url.pathname.startsWith(BASE_PATH + "/_next/static/") && /\.(js|css)$/.test(url.pathname));
+    await cache.addAll([...new Set(assets.map(url => url.href))].map(url => new Request(url, { cache: "reload" })));
+  })());
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(keys.filter((key) => key.startsWith("dnevnik-") && key !== CACHE_NAME).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
+  const url = new URL(event.request.url);
+  if (event.request.method !== "GET" || url.origin !== self.location.origin || url.pathname.includes("/api/")) return;
   if (event.request.mode === "navigate") {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(`${BASE_PATH}/`, copy));
+          if (response.ok) {
+            const copy = response.clone();
+            event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.put(`${BASE_PATH}/`, copy)));
+          }
           return response;
         })
-        .catch(() => caches.match(`${BASE_PATH}/`))
+        .catch(async () => (await caches.match(`${BASE_PATH}/`)) || new Response("Нет сети. Подключитесь к интернету и откройте ежедневник снова.", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } }))
     );
     return;
   }

@@ -20,9 +20,9 @@ export async function loadDnevnikData(): Promise<{ data: DnevnikData; usingFallb
     return { data: await readAllData(db), usingFallback: false };
   } catch {
     return {
-      data: loadFallbackData(),
+      data: safeFallbackData(),
       usingFallback: true,
-      warning: "IndexedDB недоступен. Данные временно сохраняются в fallback storage."
+      warning: "Основное хранилище недоступно. Долговременное сохранение не гарантировано: скачайте экспорт JSON в настройках перед закрытием."
     };
   }
 }
@@ -92,7 +92,7 @@ export async function savePreviewDb(preview: PreviewState | null): Promise<void>
     const db = await openDb();
     await transactionDone(db, ["drafts"], "readwrite", (tx) => tx.objectStore("drafts").put(preview, "preview"));
   } catch {
-    // Non-blocking fallback path.
+    window.dispatchEvent(new Event("dnevnik:save-error"));
   }
 }
 
@@ -104,7 +104,8 @@ export async function exportIndexedDbData(): Promise<DnevnikData> {
 function openDb(): Promise<IDBDatabase> {
   dbPromise ??= new Promise((resolve, reject) => {
     const request = indexedDB.open(dbName, dbVersion);
-    request.onerror = () => reject(request.error);
+    request.onerror = () => { dbPromise = null; reject(request.error); };
+    request.onblocked = () => { dbPromise = null; reject(new Error("Закройте другие вкладки ежедневника и повторите запуск.")); };
     request.onupgradeneeded = () => {
       const db = request.result;
       for (const store of stores) {
@@ -116,21 +117,37 @@ function openDb(): Promise<IDBDatabase> {
         }
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      request.result.onversionchange = () => { request.result.close(); dbPromise = null; };
+      resolve(request.result);
+    };
   });
   return dbPromise;
 }
 
 async function migrateLocalStorageToIndexedDb(db: IDBDatabase): Promise<void> {
-  if (localStorage.getItem(migrationMarkerKey) === "complete") return;
+  const marker = await getSingleton<string | null>(db, "settings", null, migrationMarkerKey);
+  if (marker === "complete") return;
+  // A database already containing settings was migrated by an older release.
+  // Never replace it with a stale or cleared localStorage mirror.
+  const existingSettings = await getSingleton<AppSettings | null>(db, "settings", null);
+  if (existingSettings) {
+    await transactionDone(db, ["settings"], "readwrite", tx => tx.objectStore("settings").put("complete", migrationMarkerKey));
+    return;
+  }
+  try { localStorage.getItem(migrationMarkerKey); } catch {
+    await transactionDone(db, ["settings"], "readwrite", tx => tx.objectStore("settings").put("complete", migrationMarkerKey));
+    return;
+  }
   const snapshot = loadFallbackData();
-  localStorage.setItem(migrationBackupKey, JSON.stringify({ ...snapshot, backedUpAt: new Date().toISOString() }));
+  try { localStorage.setItem(migrationBackupKey, JSON.stringify({ ...snapshot, backedUpAt: new Date().toISOString() })); } catch { /* Migration into IndexedDB can succeed even if the mirror is full. */ }
   await writeInitialData(db, snapshot);
   const verification = await readAllData(db);
   if (verification.entries.length !== snapshot.entries.length || verification.projects.length !== snapshot.projects.length) {
     throw new Error("IndexedDB migration verification failed");
   }
-  localStorage.setItem(migrationMarkerKey, "complete");
+  await transactionDone(db, ["settings"], "readwrite", tx => tx.objectStore("settings").put("complete", migrationMarkerKey));
+  try { localStorage.setItem(migrationMarkerKey, "complete"); } catch {}
 }
 
 async function writeInitialData(db: IDBDatabase, data: DnevnikData): Promise<void> {
@@ -153,6 +170,7 @@ async function writeInitialData(db: IDBDatabase, data: DnevnikData): Promise<voi
       clearAndPutMany(tx.objectStore("loyaltyCards"), data.loyaltyCards);
       tx.objectStore("knowledge").put(data.knowledge, "knowledge");
       tx.objectStore("settings").put(data.settings, "settings");
+      tx.objectStore("settings").put("complete", migrationMarkerKey);
       tx.objectStore("drafts").put(data.draft, "draft");
       tx.objectStore("drafts").put(data.preview, "preview");
     }
@@ -203,7 +221,7 @@ async function replaceAll<T extends { id: string }>(store: StoreName, items: T[]
     const db = await openDb();
     await transactionDone(db, [store], "readwrite", (tx) => clearAndPutMany(tx.objectStore(store), items));
   } catch {
-    // The UI also keeps local state; localStorage fallback is handled by legacy storage when IndexedDB fails.
+    window.dispatchEvent(new Event("dnevnik:save-error"));
   }
 }
 
@@ -214,7 +232,7 @@ async function putSingleton<T>(store: StoreName, value: T): Promise<void> {
     if (!key && store !== "drafts") return;
     await transactionDone(db, [store], "readwrite", (tx) => tx.objectStore(store).put(value, key ?? "draft"));
   } catch {
-    // Non-blocking fallback path.
+    window.dispatchEvent(new Event("dnevnik:save-error"));
   }
 }
 
@@ -243,8 +261,12 @@ function transactionDone(db: IDBDatabase, storeNames: Iterable<string>, mode: ID
   return new Promise((resolve, reject) => {
     const tx = db.transaction([...storeNames], mode);
     tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error ?? new Error("Сохранение прервано"));
     tx.oncomplete = () => resolve();
-    body(tx);
+    try { body(tx); } catch (error) {
+      tx.abort();
+      reject(error);
+    }
   });
 }
 
@@ -288,4 +310,8 @@ function emptyData(): DnevnikData {
     documents: [],
     loyaltyCards: []
   };
+}
+
+function safeFallbackData(): DnevnikData {
+  try { return loadFallbackData(); } catch { return emptyData(); }
 }
