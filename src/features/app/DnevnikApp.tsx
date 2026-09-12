@@ -1,6 +1,7 @@
 "use client";
 
-import { Mic, Search } from "lucide-react";
+import { Mic, Search, X } from "lucide-react";
+import { toggleEntryCompletion } from "@/lib/entry-actions";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DesktopNav, MobileNav } from "@/components/navigation/AppNav";
 import { Button, Surface } from "@/components/ui/native";
@@ -48,6 +49,7 @@ const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export function DnevnikApp() {
   const data = useDnevnikData();
+  const searchRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [screen, setScreen] = useState<ScreenId>("us");
   const [ownerFilter, setOwnerFilter] = useState<"me" | "partner" | "shared">("shared");
@@ -140,6 +142,37 @@ export function DnevnikApp() {
     recognitionRef.current?.abort();
   }, []);
 
+  useEffect(() => {
+    const screens: ScreenId[] = ["us", "plan", "tasks", "work", "purchases", "wishlist", "money", "documents", "ideas", "settings"];
+    const applyRoute = () => {
+      const target = window.location.hash.slice(1) as ScreenId;
+      setScreen(screens.includes(target) ? target : "us");
+      setSearch(""); setDetailId(null); setEditingPreviewIndex(null); setCaptureOpen(false);
+      keepListeningRef.current = false; recognitionRef.current?.stop(); setIsListening(false);
+      window.scrollTo({ top: 0, behavior: "instant" });
+    };
+    const initial = window.location.hash.slice(1) as ScreenId;
+    if (screens.includes(initial)) queueMicrotask(() => setScreen(initial));
+    else window.history.replaceState(null, "", window.location.pathname + window.location.search + "#us");
+    const shortcuts = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") { event.preventDefault(); searchRef.current?.focus(); }
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !document.querySelector('[role="dialog"]')) { event.preventDefault(); setCaptureOpen(true); }
+    };
+    const resize = () => {
+      document.documentElement.style.setProperty("--visible-height", (window.visualViewport?.height ?? window.innerHeight) + "px");
+      document.documentElement.style.setProperty("--visible-top", (window.visualViewport?.offsetTop ?? 0) + "px");
+    };
+    resize();
+    window.addEventListener("hashchange", applyRoute);
+    window.addEventListener("keydown", shortcuts);
+    window.visualViewport?.addEventListener("resize", resize);
+    window.visualViewport?.addEventListener("scroll", resize);
+    return () => {
+      window.removeEventListener("hashchange", applyRoute); window.removeEventListener("keydown", shortcuts);
+      window.visualViewport?.removeEventListener("resize", resize); window.visualViewport?.removeEventListener("scroll", resize);
+    };
+  }, []);
+
   const selectedEntry = useMemo(() => data.entries.find((entry) => entry.id === detailId) ?? null, [data.entries, detailId]);
 
   function setMode(mode: "day" | "week" | "month") {
@@ -149,7 +182,9 @@ export function DnevnikApp() {
 
   function navigate(next: ScreenId) {
     setScreen(next);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setSearch("");
+    if (window.location.hash !== `#${next}`) window.location.hash = next;
+    window.scrollTo({ top: 0, behavior: "instant" });
   }
 
   function closeCapture() {
@@ -374,16 +409,8 @@ export function DnevnikApp() {
   }
 
   function completeEntry(entry: DiaryEntry) {
-    const status = entry.kind === "purchase" ? "bought" : "done";
-    data.setEntries((current) => current.map((item) => item.id === entry.id ? {
-      ...item,
-      status,
-      purchase: item.purchase ? { ...item.purchase, status: "purchased" } : item.purchase,
-      wish: item.wish ? { ...item.wish, status: "purchased" } : item.wish,
-      completedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      revision: (item.revision ?? 1) + 1
-    } : item));
+    data.setEntries(current => current.map(item => item.id === entry.id ? toggleEntryCompletion(item) : item));
+    setToast({ title: entry.status === "done" || entry.status === "bought" ? "Вернул в список" : "Готово", detail: entry.title, actionLabel: "Отменить", action: () => updateEntry(entry.id, { status: entry.status, purchase: entry.purchase, wish: entry.wish, completedAt: entry.completedAt }) });
   }
 
   function updateEntry(id: string, patch: Partial<DiaryEntry>) {
@@ -460,28 +487,33 @@ export function DnevnikApp() {
     reader.readAsText(file);
   }
 
+  const searchResults = useMemo(() => {
+    const needle = search.trim().toLocaleLowerCase("ru");
+    return needle ? data.entries.filter(entry => `${entry.title} ${entry.description ?? ""} ${entry.project ?? ""} ${entry.area ?? ""} ${entry.url ?? ""}`.toLocaleLowerCase("ru").includes(needle)) : [];
+  }, [search, data.entries]);
+
   if (!data.status.ready) {
     return <main className="mx-auto grid min-h-screen max-w-xl place-items-center px-4"><Surface className="p-6 text-center font-black">Загружаю ежедневник...</Surface></main>;
   }
 
   return (
-    <main className="mx-auto grid min-h-screen w-full max-w-7xl gap-5 px-4 pb-28 pt-4 md:grid-cols-[220px_minmax(0,1fr)] md:px-6 md:pb-8">
+    <main className="mx-auto grid min-h-screen w-full max-w-7xl gap-5 px-4 pb-28 pt-4 md:grid-cols-[240px_minmax(0,1fr)] md:px-6 md:pb-8">
       <DesktopNav active={screen} onChange={navigate} />
       <div className="min-w-0">
-        <div className="mb-4 flex items-center gap-2">
-          <label className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-[var(--line)] bg-[var(--surface)] px-3 py-3"><Search size={18} aria-hidden="true" /><input aria-label="Поиск по всем записям" placeholder="Найти запись…" className="min-w-0 w-full bg-transparent outline-none" value={search} onChange={event => setSearch(event.target.value)} /></label>
-          <Button onClick={() => setCaptureOpen(true)} variant="primary" aria-label="Быстрый ввод: текст или голос"><Mic size={20} />Добавить</Button>
+        <div className="app-toolbar">
+          <div className="global-search"><Search size={19} aria-hidden="true" /><input ref={searchRef} aria-label="Поиск по всем записям" title="Поиск · Ctrl K" placeholder="Найти запись…" value={search} onChange={event => setSearch(event.target.value)} />{search ? <button type="button" aria-label="Очистить поиск" className="icon-control" onClick={() => { setSearch(""); searchRef.current?.focus(); }}><X size={16} /></button> : null}</div>
+          <Button onClick={() => setCaptureOpen(true)} variant="primary" aria-label="Быстрый ввод: текст или голос" title="Добавить · Ctrl Enter"><Mic size={19} />Добавить</Button>
         </div>
-        {search.trim() ? <Surface className="mb-4 grid gap-2 p-3">{data.entries.filter(entry => `${entry.title} ${entry.description ?? ""} ${entry.project ?? ""} ${entry.area ?? ""}`.toLocaleLowerCase("ru").includes(search.trim().toLocaleLowerCase("ru"))).map(entry => <button className="rounded-xl p-3 text-left hover:bg-[var(--surface-soft)]" key={entry.id} onClick={() => setDetailId(entry.id)}><b>{entry.title}</b><span className="block text-xs text-[var(--muted)]">{entry.area ?? "Личное"} · {kindLabels[entry.kind] ?? "Запись"}</span></button>)}<p className="text-xs text-[var(--muted)]">Поиск включает завершённые записи. Откройте результат для редактирования.</p></Surface> : null}
+        {search.trim() ? <Surface className="search-results" aria-label="Результаты поиска"><p className="px-3 py-2 text-sm text-[var(--muted)]">{searchResults.length ? "Найдено: " + searchResults.length : "Ничего не найдено. Попробуйте другое слово."}</p>{searchResults.slice(0, 50).map(entry => <button type="button" className="search-result" key={entry.id} onClick={() => setDetailId(entry.id)}><b>{entry.title}</b><span>{entry.area ?? "Личное"} · {kindLabels[entry.kind] ?? "Запись"}</span></button>)}{searchResults.length > 50 ? <p className="p-3 text-sm text-[var(--muted)]">Показаны первые 50 записей. Уточните поиск.</p> : null}</Surface> : null}
         {data.status.warning ? <Surface className="mb-4 p-3 text-sm text-[#a15c00]">{data.status.warning}</Surface> : null}
         {screen === "plan" ? (
           <PlanView calendarEvents={data.calendarEvents} entries={data.entries} importantDates={data.importantDates} members={data.members} planTransactions={data.planTransactions} sharedPlans={data.sharedPlans} spaces={data.spaces} ownerFilter={ownerFilter} mode={planMode} selectedDate={selectedDate} onModeChange={setMode} onDateChange={setSelectedDate} onOwnerFilterChange={setOwnerFilter} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} onAdd={() => setCaptureOpen(true)} />
         ) : null}
         {screen === "us" ? (
-          <UsView calendarEvents={data.calendarEvents} entries={data.entries} importantDates={data.importantDates} members={data.members} sharedPlans={data.sharedPlans} spaces={data.spaces} onOpenEntry={(entry) => setDetailId(entry.id)} />
+          <UsView calendarEvents={data.calendarEvents} entries={data.entries} importantDates={data.importantDates} members={data.members} sharedPlans={data.sharedPlans} spaces={data.spaces} onOpenEntry={(entry) => setDetailId(entry.id)} onComplete={completeEntry} onNavigate={navigate} />
         ) : null}
         {screen === "tasks" ? (
-          <TasksView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={() => createManualEntry("task")} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
+          <TasksView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={(assignedTo = "me") => createManualEntry("task", { assignedTo, visibility: assignedTo === "shared" ? "shared" : "private" })} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
         {screen === "work" ? (
           <WorkView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={() => createManualEntry("task", { area: "Работа", projectPath: ["Работа"], domain: "work" })} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
@@ -493,7 +525,7 @@ export function DnevnikApp() {
           <WishlistView defaultCurrency={data.settings.defaultCurrency} entries={data.entries} members={data.members} planTransactions={data.planTransactions} sharedPlans={data.sharedPlans} spaces={data.spaces} onChangeEntries={data.setEntries} onChangePlanTransactions={data.setPlanTransactions} onChangeSharedPlans={data.setSharedPlans} onCreateManual={(planned) => createManualEntry("wish", planned ? { wish: { status: "planned", owner: "shared", currency: data.settings.defaultCurrency }, assignedTo: "shared", visibility: "shared" } : undefined)} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
         {screen === "money" ? (
-          <MoneyView entries={data.entries} members={data.members} sharedPlans={data.sharedPlans} spaces={data.spaces} onOpen={(entry) => setDetailId(entry.id)} />
+          <MoneyView entries={data.entries} members={data.members} sharedPlans={data.sharedPlans} spaces={data.spaces} onOpen={(entry) => setDetailId(entry.id)} onComplete={completeEntry} />
         ) : null}
         {screen === "documents" ? (
           <DocumentsHubView documents={data.documents} loyaltyCards={data.loyaltyCards} onChangeDocuments={data.setDocuments} onChangeLoyaltyCards={data.setLoyaltyCards} />
@@ -510,6 +542,7 @@ export function DnevnikApp() {
       {captureOpen ? <CaptureSheet text={quickText} isListening={isListening} isParsing={isParsing} preview={preview} voiceMessage={voiceMessage} onClose={closeCapture} onTextChange={setQuickText} onToggleVoice={toggleVoice} onParse={parseText} onSaveAll={() => savePreview()} onEditPreview={setEditingPreviewIndex} onRemovePreview={removePreviewItem} /> : null}
       {editingPreviewIndex !== null && preview?.items[editingPreviewIndex] ? (
         <EntryDetailSheet
+          key={editingPreviewIndex}
           entry={normalizeSavedEntry(createEntryFromParsed(preview.items[editingPreviewIndex]), data.spaces, data.projects)}
           members={data.members}
           projects={data.projects}
@@ -525,7 +558,7 @@ export function DnevnikApp() {
           onRemember={() => undefined}
         />
       ) : null}
-      {selectedEntry ? <EntryDetailSheet entry={selectedEntry} members={data.members} projects={data.projects} spaces={data.spaces} onChange={(patch) => updateEntry(selectedEntry.id, patch)} onCreateProject={createProject} onCreateSpace={createSpace} onClose={() => setDetailId(null)} onDelete={() => { deleteEntry(selectedEntry); setDetailId(null); }} onRemember={rememberCurrentEntry} /> : null}
+      {selectedEntry ? <EntryDetailSheet key={selectedEntry.id} entry={selectedEntry} members={data.members} projects={data.projects} spaces={data.spaces} onChange={(patch) => updateEntry(selectedEntry.id, patch)} onCreateProject={createProject} onCreateSpace={createSpace} onClose={() => setDetailId(null)} onDelete={() => { deleteEntry(selectedEntry); setDetailId(null); }} onRemember={rememberCurrentEntry} /> : null}
       {toast ? <Toast title={toast.title} detail={toast.detail} action={toast.action} actionLabel={toast.actionLabel} /> : null}
     </main>
   );

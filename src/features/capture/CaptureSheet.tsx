@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
+import { useModalLayer } from "@/hooks/use-modal-layer";
 import { Mic, Square, WandSparkles, X } from "lucide-react";
 import { Button, Surface, Textarea } from "@/components/ui/native";
 import type { AIParseResult } from "@/lib/types";
@@ -34,26 +35,12 @@ export function CaptureSheet({
   onRemovePreview: (index: number) => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const oldOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-      if (event.key !== "Tab") return;
-      const controls = panelRef.current?.querySelectorAll<HTMLElement>("button:not(:disabled), textarea, input, [tabindex=\"0\"]");
-      if (!controls?.length) return;
-      const first = controls[0], last = controls[controls.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => { document.body.style.overflow = oldOverflow; document.removeEventListener("keydown", onKey); };
-  }, [onClose]);
+  useModalLayer(panelRef, onClose);
   return (
-    <div ref={panelRef} className="fixed inset-0 z-[70] flex items-end justify-center bg-black/30 px-3 pb-[calc(10px+env(safe-area-inset-bottom))] backdrop-blur-sm" onClick={onClose}>
-      <Surface role="dialog" aria-modal="true" aria-label="Добавить запись" className="max-h-[calc(100dvh_-_24px_-_env(safe-area-inset-bottom))] w-full max-w-xl overflow-auto p-4" onClick={(event) => event.stopPropagation()}>
+    <div ref={panelRef} className="app-overlay z-[80]" onClick={onClose}>
+      <Surface role="dialog" aria-modal="true" aria-label="Добавить запись" className="app-dialog max-w-xl" onClick={(event) => event.stopPropagation()}>
         <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-black/15" />
-        <div className="mb-3 flex items-center justify-between">
+        <div className="dialog-heading">
           <h2 className="text-2xl font-black">Добавить</h2>
           <button className="grid h-10 w-10 place-items-center rounded-full bg-black/[.05]" onClick={onClose} type="button" aria-label="Закрыть">
             <X size={19} />

@@ -20,7 +20,7 @@ export function EntryCard({
   const amount = money(entry);
   return (
     <div className="entry-card">
-      <button className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-black/[.045] text-[#1c6f5b]" onClick={onComplete} type="button" aria-label={done ? "Выполнено" : "Отметить выполненным"}>
+      <button className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-black/[.045] text-[#1c6f5b]" onClick={onComplete} type="button" aria-label={done ? "Вернуть в список" : "Отметить выполненным"}>
         {done ? <Check size={18} /> : <Circle size={18} />}
       </button>
       <button className="min-w-0 flex-1 text-left" onClick={onOpen} type="button">
@@ -35,7 +35,7 @@ export function EntryCard({
           <span>{entrySpaceName(entry, spaces)}{entry.project ? ` · ${entry.project}` : ""}</span>
           {entry.time ? <span>{entry.time}</span> : null}
           {entry.dueDate ? <span>{formatDateRu(entry.dueDate)}</span> : null}
-          {amount ? <span>{amount.toLocaleString("ru-RU")} ₽</span> : null}
+          {amount ? <span>{amount.toLocaleString("ru-RU")} {entry.purchase?.currency ?? entry.wish?.currency ?? entry.currency ?? "RUB"}</span> : null}
           {entry.url ? <span className="inline-flex items-center gap-1"><ExternalLink size={13} /> ссылка</span> : null}
         </div>
       </button>

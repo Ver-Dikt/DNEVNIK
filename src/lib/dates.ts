@@ -1,13 +1,13 @@
 import type { SchedulePreset } from "@/lib/types";
 
 export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDateIso(new Date());
 }
 
 export function addDaysIso(days: number): string {
   const date = new Date();
   date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+  return localDateIso(date);
 }
 
 export function resolveScheduleDate(schedule: SchedulePreset): string | undefined {
@@ -40,4 +40,8 @@ export function formatDateRu(date?: string): string {
     day: "numeric",
     month: "short"
   }).format(new Date(`${date}T00:00:00`));
+}
+
+function localDateIso(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }

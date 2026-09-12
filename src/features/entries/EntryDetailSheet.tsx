@@ -1,7 +1,8 @@
 "use client";
 
+import { useModalLayer } from "@/hooks/use-modal-layer";
 import { Plus, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button, Field, Input, Segmented, Select, Surface, Textarea } from "@/components/ui/native";
 import type { AssignedTo, DiaryEntry, EntryKind, Member, ProjectNode, RepeatRule, Space, WishStatus } from "@/lib/types";
 import { purchaseStatusGroup, purchaseStatusToEntryStatus, wishStatus } from "@/features/shared/entry-utils";
@@ -31,6 +32,8 @@ export function EntryDetailSheet({
   onDelete: () => void;
   onRemember: () => void;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useModalLayer(panelRef, onClose);
   const [newSpace, setNewSpace] = useState("");
   const [newProject, setNewProject] = useState("");
   const [checkText, setCheckText] = useState("");
@@ -44,10 +47,10 @@ export function EntryDetailSheet({
   const visibleProjects = projects.filter((project) => !entry.spaceId || project.spaceId === entry.spaceId || project.area === entry.area);
 
   return (
-    <div className="fixed inset-0 z-[75] flex items-end justify-center bg-black/30 px-3 pb-[calc(10px+env(safe-area-inset-bottom))] backdrop-blur-sm" onClick={onClose}>
-      <Surface className="max-h-[calc(100dvh_-_24px_-_env(safe-area-inset-bottom))] w-full max-w-2xl overflow-auto p-4" onClick={(event) => event.stopPropagation()}>
+    <div ref={panelRef} className="app-overlay z-[85]" onClick={onClose}>
+      <Surface role="dialog" aria-modal="true" aria-label="Редактировать запись" className="app-dialog max-w-2xl" onClick={(event) => event.stopPropagation()}>
         <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-black/15" />
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="dialog-heading">
           <h2 className="text-2xl font-black">Запись</h2>
           <button className="grid h-10 w-10 place-items-center rounded-full bg-black/[.05]" onClick={onClose} type="button" aria-label="Закрыть"><X size={19} /></button>
         </div>
@@ -244,7 +247,7 @@ export function EntryDetailSheet({
 
           {entry.needsReview ? <Button className="font-bold" onClick={onRemember}>Запомнить исправление для похожих записей</Button> : null}
 
-          <div className="flex items-center justify-between gap-2 pt-2">
+          <div className="dialog-footer flex items-center justify-between gap-2">
             <Button className="px-4 font-bold" onClick={onDelete} variant="danger"><Trash2 size={16} />Удалить</Button>
             <Button className="px-6 font-black" onClick={onClose} variant="primary">Готово</Button>
           </div>

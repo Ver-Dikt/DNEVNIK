@@ -1,21 +1,23 @@
 "use client";
 
+import { useModalLayer } from "@/hooks/use-modal-layer";
+import { todayIso } from "@/lib/dates";
 import { CalendarHeart, CheckCircle2, Plus, X } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Button, Field, Input, Segmented, Surface } from "@/components/ui/native";
 import { EntryCard } from "@/features/entries/EntryCard";
 import { calculateBudget } from "@/lib/finance";
 import { purchaseStatusGroup, wishStatus } from "@/features/shared/entry-utils";
 import type { AppSettings, AssignedTo, CalendarEvent, DiaryEntry, ImportantDate, LoyaltyCard, Member, SharedPlan, Space } from "@/lib/types";
 
-export function UsView({ calendarEvents, entries, importantDates, sharedPlans, spaces, onOpenEntry }: { calendarEvents: CalendarEvent[]; entries: DiaryEntry[]; importantDates: ImportantDate[]; members: Member[]; sharedPlans: SharedPlan[]; spaces: Space[]; onOpenEntry: (entry: DiaryEntry) => void }) {
+export function UsView({ calendarEvents, entries, importantDates, sharedPlans, spaces, onOpenEntry, onComplete, onNavigate }: { calendarEvents: CalendarEvent[]; entries: DiaryEntry[]; importantDates: ImportantDate[]; members: Member[]; sharedPlans: SharedPlan[]; spaces: Space[]; onOpenEntry: (entry: DiaryEntry) => void; onComplete: (entry: DiaryEntry) => void; onNavigate: (screen: import("@/features/app/types").ScreenId) => void }) {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const sharedEntries = entries.filter((entry) => entry.assignedTo === "shared" || entry.visibility === "shared");
   const sharedTasks = sharedEntries.filter((entry) => entry.kind === "task" && entry.status !== "done" && entry.status !== "cancelled");
   const sharedPurchases = sharedEntries.filter((entry) => entry.kind === "purchase" && purchaseStatusGroup(entry) !== "purchased" && entry.status !== "cancelled");
   const sharedWishes = sharedEntries.filter((entry) => entry.kind === "wish" && wishStatus(entry) !== "dismissed" && wishStatus(entry) !== "purchased");
   const activePlans = sharedPlans.filter((plan) => plan.status === "active" && plan.visibility === "shared");
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const todayEntries = sharedEntries.filter((entry) => entry.dueDate === today && entry.status !== "done" && entry.status !== "cancelled").slice(0, 3);
   const nextDate = nextImportantDate(importantDates, today);
   const upcomingEntries = sharedEntries.filter((entry) => entry.dueDate && entry.dueDate >= today && entry.status !== "done" && entry.status !== "cancelled").sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? "")).slice(0, 3);
@@ -40,13 +42,13 @@ export function UsView({ calendarEvents, entries, importantDates, sharedPlans, s
           <button className="text-sm font-black text-[var(--accent)]" onClick={() => setSummaryOpen(true)} type="button">Смотреть ›</button>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-3">
-          <MiniStat label="хотелки" value={String(sharedWishes.length)} />
-          <MiniStat label="покупки" value={String(sharedPurchases.length)} />
-          <MiniStat label="планы" value={String(activePlans.length)} />
-          <MiniStat label="общие задачи" value={String(sharedTasks.length)} />
+          <button className="text-left rounded-xl focus-visible:outline" type="button" onClick={() => onNavigate("wishlist")}><MiniStat label="хотелки" value={String(sharedWishes.length)} /></button>
+          <button className="text-left rounded-xl focus-visible:outline" type="button" onClick={() => onNavigate("purchases")}><MiniStat label="покупки" value={String(sharedPurchases.length)} /></button>
+          <button className="text-left rounded-xl focus-visible:outline" type="button" onClick={() => onNavigate("money")}><MiniStat label="планы" value={String(activePlans.length)} /></button>
+          <button className="text-left rounded-xl focus-visible:outline" type="button" onClick={() => onNavigate("tasks")}><MiniStat label="общие задачи" value={String(sharedTasks.length)} /></button>
         </div>
       </Surface>
-      <PreviewSection empty="На сегодня общих дел нет." entries={todayEntries} members={[]} spaces={spaces} title="Сегодня" onOpenEntry={onOpenEntry} />
+      <PreviewSection empty="На сегодня общих дел нет." entries={todayEntries} members={[]} spaces={spaces} title="Сегодня" onOpenEntry={onOpenEntry} onComplete={onComplete} />
       <Surface className="grid gap-2 p-4">
         <div className="flex items-center gap-3"><CalendarHeart size={20} /><h2 className="text-lg font-black">Ближайшее</h2></div>
         {nextDate ? <p className="font-bold">{nextDate.title} · {formatShortDate(nextDate.date)}</p> : null}
@@ -54,21 +56,23 @@ export function UsView({ calendarEvents, entries, importantDates, sharedPlans, s
         {!nextDate && !upcomingEntries.length ? <p className="text-sm text-[var(--muted)]">Пока нет ближайших общих событий.</p> : null}
         {calendarEvents.slice(0, 2).map((event) => <p className="text-sm text-[var(--muted)]" key={event.id}>{event.title} · {formatShortDate(event.startDate)}</p>)}
       </Surface>
-      <PreviewSection empty="Срочных общих пунктов нет." entries={important} members={[]} spaces={spaces} title="Важное" onOpenEntry={onOpenEntry} />
-      {summaryOpen ? <SharedSummarySheet entries={sharedEntries} plans={activePlans} spaces={spaces} onClose={() => setSummaryOpen(false)} onOpenEntry={onOpenEntry} /> : null}
+      <PreviewSection empty="Срочных общих пунктов нет." entries={important} members={[]} spaces={spaces} title="Важное" onOpenEntry={onOpenEntry} onComplete={onComplete} />
+      {summaryOpen ? <SharedSummarySheet entries={sharedEntries} plans={activePlans} spaces={spaces} onClose={() => setSummaryOpen(false)} onOpenEntry={entry => { setSummaryOpen(false); onOpenEntry(entry); }} /> : null}
     </div>
   );
 }
 
 function SharedSummarySheet({ entries, plans, spaces, onClose, onOpenEntry }: { entries: DiaryEntry[]; plans: SharedPlan[]; spaces: Space[]; onClose: () => void; onOpenEntry: (entry: DiaryEntry) => void }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useModalLayer(panelRef, onClose);
   const tasks = entries.filter((entry) => entry.kind === "task" && entry.status !== "done" && entry.status !== "cancelled").slice(0, 6);
   const purchases = entries.filter((entry) => entry.kind === "purchase" && purchaseStatusGroup(entry) !== "purchased" && entry.status !== "cancelled").slice(0, 6);
   const wishes = entries.filter((entry) => entry.kind === "wish" && wishStatus(entry) !== "dismissed" && wishStatus(entry) !== "purchased").slice(0, 6);
   return (
-    <div className="fixed inset-0 z-[75] flex items-end justify-center bg-black/30 px-3 pb-[calc(10px+env(safe-area-inset-bottom))] backdrop-blur-sm" onClick={onClose}>
-      <Surface className="max-h-[calc(100dvh_-_24px_-_env(safe-area-inset-bottom))] w-full max-w-2xl overflow-auto p-4" onClick={(event) => event.stopPropagation()}>
+    <div ref={panelRef} className="app-overlay z-[80]" onClick={onClose}>
+      <Surface role="dialog" aria-modal="true" aria-label="Общие записи" className="app-dialog max-w-2xl" onClick={(event) => event.stopPropagation()}>
         <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-black/15" />
-        <div className="mb-4 flex items-center justify-between gap-3">
+        <div className="dialog-heading">
           <h2 className="text-2xl font-black">Общее</h2>
           <button className="grid h-10 w-10 place-items-center rounded-full bg-black/[.05]" onClick={onClose} type="button" aria-label="Закрыть"><X size={19} /></button>
         </div>
@@ -93,14 +97,14 @@ function SharedSummaryBlock({ entries, spaces, title, onOpenEntry }: { entries: 
   );
 }
 
-function PreviewSection({ empty, entries, members, spaces, title, onOpenEntry }: { empty: string; entries: DiaryEntry[]; members: Member[]; spaces: Space[]; title: string; onOpenEntry: (entry: DiaryEntry) => void }) {
+function PreviewSection({ empty, entries, members, spaces, title, onOpenEntry, onComplete }: { empty: string; entries: DiaryEntry[]; members: Member[]; spaces: Space[]; title: string; onOpenEntry: (entry: DiaryEntry) => void; onComplete: (entry: DiaryEntry) => void }) {
   return (
     <section className="grid gap-2">
       <div className="flex items-center justify-between px-1">
         <h2 className="text-base font-black">{title}</h2>
         {entries.length ? <span className="text-sm font-bold text-[var(--muted)]">{entries.length}</span> : null}
       </div>
-      {entries.length ? entries.map((entry) => <EntryCard entry={entry} key={entry.id} members={members} spaces={spaces} onComplete={() => undefined} onOpen={() => onOpenEntry(entry)} />) : <Surface className="p-4 text-sm text-[var(--muted)]">{empty}</Surface>}
+      {entries.length ? entries.map((entry) => <EntryCard entry={entry} key={entry.id} members={members} spaces={spaces} onComplete={() => onComplete(entry)} onOpen={() => onOpenEntry(entry)} />) : <Surface className="p-4 text-sm text-[var(--muted)]">{empty}</Surface>}
     </section>
   );
 }
@@ -125,12 +129,15 @@ function nextOccurrenceDate(item: ImportantDate, fromDate: string) {
 
 export function TasksView({ entries, members, spaces, onAdd, onComplete, onOpen }: EntryListProps) {
   const [filter, setFilter] = useOwnerFilter();
-  const tasks = entries.filter((entry) => entry.kind === "task" && entry.status !== "done" && matchesAssignee(entry, filter));
+  const [taskState, setTaskState] = useState<"active" | "done" | "all">("active");
+  const addTask = () => onAdd?.(filter);
+  const tasks = entries.filter((entry) => entry.kind === "task" && matchesAssignee(entry, filter) && (taskState === "all" || (taskState === "done" ? entry.status === "done" : entry.status !== "done" && entry.status !== "cancelled")));
   return (
     <div className="grid gap-4">
-      <Header action={<IconAddButton label="Добавить задачу" onClick={() => onAdd?.()} />} eyebrow="Ответственность" title="Задачи" />
+      <Header action={<IconAddButton label="Добавить задачу" onClick={addTask} />} eyebrow="Ответственность" title="Задачи" />
       <Segmented value={filter} onChange={setFilter} options={ownerFilterOptions} />
-      <EntryList entries={tasks} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} emptyAction={onAdd} emptyButton="Добавить задачу" emptyIcon={<CheckCircle2 size={58} />} emptyTitle="Список дел на двоих" empty="Пишите, что нужно сделать. Задачу можно оставить себе или отдать партнёру." />
+      <Segmented value={taskState} onChange={setTaskState} options={[{label: "В работе", value: "active"}, {label: "Готово", value: "done"}, {label: "Все", value: "all"}]} />
+      <EntryList entries={tasks} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} emptyAction={addTask} emptyButton="Добавить задачу" emptyIcon={<CheckCircle2 size={58} />} emptyTitle="Список дел на двоих" empty="Пишите, что нужно сделать. Задачу можно оставить себе или отдать партнёру." />
     </div>
   );
 }
@@ -154,18 +161,18 @@ export function IdeasView({ entries, members, spaces, onAdd, onComplete, onOpen 
   );
 }
 
-export function MoneyView({ entries, members, sharedPlans, spaces, onOpen }: { entries: DiaryEntry[]; members: Member[]; sharedPlans: SharedPlan[]; spaces: Space[]; onOpen: (entry: DiaryEntry) => void }) {
+export function MoneyView({ entries, members, sharedPlans, spaces, onOpen, onComplete }: { entries: DiaryEntry[]; members: Member[]; sharedPlans: SharedPlan[]; spaces: Space[]; onOpen: (entry: DiaryEntry) => void; onComplete: (entry: DiaryEntry) => void }) {
   const budget = calculateBudget(entries);
   const moneyEntries = entries.filter((entry) => entry.kind === "purchase");
   return (
     <div className="grid gap-4">
-      <Header eyebrow="Пока без заполнения" title="Деньги" />
+      <Header eyebrow="Обзор покупок" title="Деньги" />
       <div className="grid gap-3 sm:grid-cols-3">
         <Surface className="summary-card"><span>Покупки</span><b>{budget.planned.toLocaleString("ru-RU")} ₽</b><small>Планируется</small></Surface>
         <Surface className="summary-card"><span>Потрачено</span><b>{budget.actual.toLocaleString("ru-RU")} ₽</b><small>Из покупок</small></Surface>
         <Surface className="summary-card"><span>Планы</span><b>{sharedPlans.length}</b><small>Цели и копилки</small></Surface>
       </div>
-      <EntryList entries={moneyEntries} members={members} spaces={spaces} onComplete={() => undefined} onOpen={onOpen} empty="Финансовых записей пока нет." />
+      <EntryList entries={moneyEntries} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} empty="Финансовых записей пока нет." />
     </div>
   );
 }
@@ -241,7 +248,7 @@ type EntryListProps = {
   entries: DiaryEntry[];
   members: Member[];
   spaces: Space[];
-  onAdd?: () => void;
+  onAdd?: (assignedTo?: AssignedTo) => void;
   onComplete: (entry: DiaryEntry) => void;
   onOpen: (entry: DiaryEntry) => void;
 };
