@@ -276,6 +276,7 @@ export function useDnevnikData() {
     setSpaces(defaultSpaces);
     setMembers(defaultMembers);
     setKnowledge(defaultKnowledge);
+    setSettings(defaultSettings);
     setFinanceTransactions([]);
     setSavingsGoals([]);
     setSharedPlans([]);
@@ -287,7 +288,7 @@ export function useDnevnikData() {
     setDraft(null);
     setPreviewState(null);
     clearAllDnevnikStorage({ learnedRules: true });
-  }, [setCalendarEvents, setDocuments, setDraft, setEntries, setFinanceTransactions, setImportantDates, setKnowledge, setLoyaltyCards, setMembers, setPlanTransactions, setPreviewState, setProjects, setSavingsGoals, setSharedPlans, setSpaces]);
+  }, [setCalendarEvents, setDocuments, setDraft, setEntries, setFinanceTransactions, setImportantDates, setKnowledge, setLoyaltyCards, setMembers, setPlanTransactions, setPreviewState, setProjects, setSavingsGoals, setSharedPlans, setSpaces, setSettings]);
 
   return useMemo(
     () => ({

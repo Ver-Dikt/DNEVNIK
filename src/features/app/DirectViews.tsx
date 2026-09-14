@@ -1,6 +1,7 @@
 "use client";
 
 import { useModalLayer } from "@/hooks/use-modal-layer";
+import { relationshipDays, upcomingImportantDate } from "@/lib/important-dates";
 import { todayIso } from "@/lib/dates";
 import { CalendarHeart, CheckCircle2, Plus, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
@@ -13,15 +14,16 @@ import type { AppSettings, AssignedTo, CalendarEvent, DiaryEntry, ImportantDate,
 export function UsView({ calendarEvents, entries, importantDates, sharedPlans, spaces, onOpenEntry, onComplete, onNavigate }: { calendarEvents: CalendarEvent[]; entries: DiaryEntry[]; importantDates: ImportantDate[]; members: Member[]; sharedPlans: SharedPlan[]; spaces: Space[]; onOpenEntry: (entry: DiaryEntry) => void; onComplete: (entry: DiaryEntry) => void; onNavigate: (screen: import("@/features/app/types").ScreenId) => void }) {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const sharedEntries = entries.filter((entry) => entry.assignedTo === "shared" || entry.visibility === "shared");
-  const sharedTasks = sharedEntries.filter((entry) => entry.kind === "task" && entry.status !== "done" && entry.status !== "cancelled");
+  const sharedTasks = sharedEntries.filter((entry) => entry.kind === "task" && entry.status !== "done" && entry.status !== "bought" && entry.status !== "cancelled");
   const sharedPurchases = sharedEntries.filter((entry) => entry.kind === "purchase" && purchaseStatusGroup(entry) !== "purchased" && entry.status !== "cancelled");
   const sharedWishes = sharedEntries.filter((entry) => entry.kind === "wish" && wishStatus(entry) !== "dismissed" && wishStatus(entry) !== "purchased");
   const activePlans = sharedPlans.filter((plan) => plan.status === "active" && plan.visibility === "shared");
   const today = todayIso();
-  const todayEntries = sharedEntries.filter((entry) => entry.dueDate === today && entry.status !== "done" && entry.status !== "cancelled").slice(0, 3);
-  const nextDate = nextImportantDate(importantDates, today);
-  const upcomingEntries = sharedEntries.filter((entry) => entry.dueDate && entry.dueDate >= today && entry.status !== "done" && entry.status !== "cancelled").sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? "")).slice(0, 3);
-  const important = sharedEntries.filter((entry) => entry.priority === "high" && entry.status !== "done" && entry.status !== "cancelled").slice(0, 3);
+  const todayEntries = sharedEntries.filter((entry) => entry.dueDate === today && entry.status !== "done" && entry.status !== "bought" && entry.status !== "cancelled").slice(0, 3);
+  const nextDate = upcomingImportantDate(importantDates, today);
+  const relationship = relationshipDays(importantDates.find(item => item.title === "Вместе с")?.date, today);
+  const upcomingEntries = sharedEntries.filter((entry) => entry.dueDate && entry.dueDate >= today && entry.status !== "done" && entry.status !== "bought" && entry.status !== "cancelled").sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? "")).slice(0, 3);
+  const important = sharedEntries.filter((entry) => entry.priority === "high" && entry.status !== "done" && entry.status !== "bought" && entry.status !== "cancelled").slice(0, 3);
   return (
     <div className="grid gap-5">
       <div className="screen-header compact-us-header">
@@ -30,10 +32,11 @@ export function UsView({ calendarEvents, entries, importantDates, sharedPlans, s
           <h1 className="screen-title">Мы</h1>
         </div>
         <div className="couple-mini-stats">
-          <Surface className="couple-stat-card"><b>{daysTogether(importantDates)}</b><span>дней вместе</span></Surface>
-          <Surface className="couple-stat-card accent"><b>{daysToAnniversary(importantDates)}</b><span>до годовщины</span></Surface>
+          <Surface className="couple-stat-card"><b>{relationship.together ?? "—"}</b><span>дней вместе</span></Surface>
+          <Surface className="couple-stat-card accent"><b>{relationship.anniversary ?? "—"}</b><span>до годовщины</span></Surface>
         </div>
       </div>
+      {relationship.together === null ? <button className="date-setup" type="button" onClick={() => onNavigate("settings")}>Указать дату знакомства или начала отношений →</button> : null}
       <Surface className="summary-panel p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -65,7 +68,7 @@ export function UsView({ calendarEvents, entries, importantDates, sharedPlans, s
 function SharedSummarySheet({ entries, plans, spaces, onClose, onOpenEntry }: { entries: DiaryEntry[]; plans: SharedPlan[]; spaces: Space[]; onClose: () => void; onOpenEntry: (entry: DiaryEntry) => void }) {
   const panelRef = useRef<HTMLDivElement>(null);
   useModalLayer(panelRef, onClose);
-  const tasks = entries.filter((entry) => entry.kind === "task" && entry.status !== "done" && entry.status !== "cancelled").slice(0, 6);
+  const tasks = entries.filter((entry) => entry.kind === "task" && entry.status !== "done" && entry.status !== "bought" && entry.status !== "cancelled").slice(0, 6);
   const purchases = entries.filter((entry) => entry.kind === "purchase" && purchaseStatusGroup(entry) !== "purchased" && entry.status !== "cancelled").slice(0, 6);
   const wishes = entries.filter((entry) => entry.kind === "wish" && wishStatus(entry) !== "dismissed" && wishStatus(entry) !== "purchased").slice(0, 6);
   return (
@@ -115,23 +118,11 @@ function formatShortDate(date: string) {
   return `${day}.${month}.${year}`;
 }
 
-function nextImportantDate(dates: ImportantDate[], fromDate: string) {
-  return [...dates].sort((a, b) => nextOccurrenceDate(a, fromDate).localeCompare(nextOccurrenceDate(b, fromDate)))[0];
-}
-
-function nextOccurrenceDate(item: ImportantDate, fromDate: string) {
-  if (item.repeat === "none") return item.date;
-  const year = Number(fromDate.slice(0, 4));
-  const candidate = `${year}-${item.date.slice(5)}`;
-  return candidate >= fromDate ? candidate : `${year + 1}-${item.date.slice(5)}`;
-}
-
-
 export function TasksView({ entries, members, spaces, onAdd, onComplete, onOpen }: EntryListProps) {
   const [filter, setFilter] = useOwnerFilter();
   const [taskState, setTaskState] = useState<"active" | "done" | "all">("active");
   const addTask = () => onAdd?.(filter);
-  const tasks = entries.filter((entry) => entry.kind === "task" && matchesAssignee(entry, filter) && (taskState === "all" || (taskState === "done" ? entry.status === "done" : entry.status !== "done" && entry.status !== "cancelled")));
+  const tasks = entries.filter((entry) => entry.kind === "task" && matchesAssignee(entry, filter) && (taskState === "all" || (taskState === "done" ? entry.status === "done" : entry.status !== "done" && entry.status !== "bought" && entry.status !== "cancelled")));
   return (
     <div className="grid gap-4">
       <Header action={<IconAddButton label="Добавить задачу" onClick={addTask} />} eyebrow="Ответственность" title="Задачи" />
@@ -337,22 +328,4 @@ function upsertImportantDate(onChangeImportantDates: (dates: ImportantDate[] | (
     }
     return [{ id: crypto.randomUUID(), title, date: value, repeat: "yearly", type, visibility: "shared", createdBy: "me", updatedBy: "me", createdAt: now, updatedAt: now, revision: 1 }, ...current];
   });
-}
-
-function daysTogether(dates: ImportantDate[]) {
-  const start = dates.find((item) => item.title === "Вместе с")?.date;
-  if (!start) return 0;
-  const diff = Date.now() - new Date(`${start}T00:00:00`).getTime();
-  return Math.max(0, Math.floor(diff / 86400000));
-}
-
-function daysToAnniversary(dates: ImportantDate[]) {
-  const start = dates.find((item) => item.title === "Вместе с")?.date;
-  if (!start) return 365;
-  const now = new Date();
-  const monthDay = start.slice(5);
-  let next = new Date(`${now.getFullYear()}-${monthDay}T00:00:00`);
-  if (Number.isNaN(next.getTime())) return 365;
-  if (next.getTime() < now.getTime()) next = new Date(`${now.getFullYear() + 1}-${monthDay}T00:00:00`);
-  return Math.max(0, Math.ceil((next.getTime() - now.getTime()) / 86400000));
 }

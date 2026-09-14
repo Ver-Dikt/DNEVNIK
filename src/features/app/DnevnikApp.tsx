@@ -1,5 +1,6 @@
 "use client";
 
+import { encodeBackupFiles, decodeBackupFiles } from "@/lib/backup-files";
 import { Mic, Search, X } from "lucide-react";
 import { toggleEntryCompletion } from "@/lib/entry-actions";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -110,10 +111,11 @@ export function DnevnikApp() {
   }, [toast]);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = data.settings.appearance;
-    return () => {
-      delete document.documentElement.dataset.theme;
-    };
+    const preference = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => { document.documentElement.dataset.theme = data.settings.appearance === "system" ? (preference.matches ? "dark" : "light") : data.settings.appearance; };
+    apply();
+    preference.addEventListener("change", apply);
+    return () => { preference.removeEventListener("change", apply); delete document.documentElement.dataset.theme; };
   }, [data.settings.appearance]);
 
   useEffect(() => {
@@ -451,7 +453,7 @@ export function DnevnikApp() {
 
   async function exportData() {
     const exported = { ...await data.exportData(), learnedRules };
-    const blob = new Blob([JSON.stringify(exported, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify(await encodeBackupFiles(exported), null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -466,7 +468,7 @@ export function DnevnikApp() {
     const reader = new FileReader();
     reader.onload = async () => {
       try {
-        const imported = JSON.parse(String(reader.result));
+        const imported = decodeBackupFiles(JSON.parse(String(reader.result))) as Awaited<ReturnType<typeof data.exportData>> & { learnedRules?: LearnedRule[] };
         if (!imported || !Array.isArray(imported.entries)) throw new Error("Invalid backup");
         if (!window.confirm("Импорт заменит текущие данные. Сначала будет скачана резервная копия текущего ежедневника. Продолжить?")) return;
         await exportData();
@@ -474,16 +476,16 @@ export function DnevnikApp() {
         if (ok) {
           setQuickText(imported.draft?.quickText ?? "");
           setPreview(imported.preview?.preview ?? null);
-          if (Array.isArray(imported.learnedRules)) {
-            setLearnedRules(imported.learnedRules);
-            try { saveLearnedRules(imported.learnedRules); } catch {}
-          }
+          const rules = Array.isArray(imported.learnedRules) ? imported.learnedRules : [];
+          setLearnedRules(rules);
+          try { saveLearnedRules(rules); } catch {}
         }
         setToast({ title: ok ? "Импорт выполнен" : "Импорт не выполнен" });
       } catch {
         setToast({ title: "Импорт не выполнен", detail: "Файл не похож на экспорт." });
       }
     };
+    reader.onerror = () => setToast({ title: "Файл не прочитан", detail: "Попробуйте выбрать резервную копию ещё раз." });
     reader.readAsText(file);
   }
 
@@ -534,7 +536,7 @@ export function DnevnikApp() {
           <IdeasView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={() => createManualEntry("idea")} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
         {screen === "settings" ? (
-          <SettingsView importantDates={data.importantDates} members={data.members} settings={data.settings} onChangeImportantDates={data.setImportantDates} onChangeMembers={data.setMembers} onChangeSettings={data.setSettings} onClearAll={() => { if (window.confirm("Удалить все данные ежедневника? Перед этим сохраните экспорт JSON.")) data.clearEverything(); }} onClearEntries={() => { if (window.confirm("Удалить все записи? Перед этим сохраните экспорт JSON.")) data.clearEntries(); }} onExport={exportData} onImport={importData} />
+          <SettingsView importantDates={data.importantDates} members={data.members} settings={data.settings} onChangeImportantDates={data.setImportantDates} onChangeMembers={data.setMembers} onChangeSettings={data.setSettings} onClearAll={() => { if (window.confirm("Удалить все данные ежедневника? Перед этим сохраните экспорт JSON.")) { keepListeningRef.current = false; recognitionRef.current?.abort(); setIsListening(false); setQuickText(""); setPreview(null); setLearnedRules([]); setDetailId(null); setCaptureOpen(false); setToast(null); latestTextRef.current = ""; voiceBaseRef.current = ""; data.clearEverything(); } }} onClearEntries={() => { if (window.confirm("Удалить все записи? Перед этим сохраните экспорт JSON.")) data.clearEntries(); }} onExport={exportData} onImport={importData} />
         ) : null}
       </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { Archive, CalendarDays, Camera, Check, CreditCard, FileText, Gift, Maximize2, Plus, Upload, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge, Button, Input, Segmented, Select, Surface } from "@/components/ui/native";
 import { calculateSharedPlan, money } from "@/features/family/shared-plan-utils";
 import type { CalendarEvent, DocumentItem, ImportantDate, LoyaltyCard, Owner, PlanTransaction, SharedPlan } from "@/lib/types";
@@ -221,8 +221,9 @@ export function DocumentsView({ documents, onChangeDocuments, embedded = false }
 }
 
 function DocumentRow({ item, onDelete }: { item: DocumentItem; onDelete: () => void }) {
-  const previewUrl = useMemo(() => item.attachments[0]?.blob ? URL.createObjectURL(item.attachments[0].blob) : undefined, [item.attachments]);
-  return <FamilyRow icon={<FileText size={18} />} title={item.title} meta={`${item.category ?? "документ"} · ${ownerLabel(item.owner)} · ${item.attachments.length} файл.`} onDelete={onDelete}>{previewUrl ? <a className="button button-plain mt-2 w-fit" href={previewUrl} target="_blank">Открыть файл</a> : null}</FamilyRow>;
+  const previewUrl = useMemo(() => item.attachments[0]?.blob instanceof Blob ? URL.createObjectURL(item.attachments[0].blob) : undefined, [item.attachments]);
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
+  return <FamilyRow icon={<FileText size={18} />} title={item.title} meta={`${item.category ?? "документ"} · ${ownerLabel(item.owner)} · ${item.attachments.length} файл.`} onDelete={onDelete}>{previewUrl ? <a className="button button-plain mt-2 w-fit" href={previewUrl} target="_blank" rel="noopener noreferrer">Открыть файл</a> : null}</FamilyRow>;
 }
 
 export function LoyaltyCardsView({ cards, onChangeCards, embedded = false }: { cards: LoyaltyCard[]; onChangeCards: Setter<LoyaltyCard>; embedded?: boolean }) {

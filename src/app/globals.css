@@ -844,3 +844,13 @@ button:disabled { cursor: not-allowed; opacity: .45; transform: none; }
 .segmented::-webkit-scrollbar { display: block; height: 3px; }
 @media (min-width: 768px) { .app-mobile-nav { display: none; } .app-overlay { align-items: center; padding: 28px; } .app-dialog { max-height: min(850px,100%); } }
 @media (max-width: 767px) { .app-toolbar { gap: 8px; margin-bottom: 18px; } .global-search { padding: 0 10px; } .global-search input { font-size: 16px; } .app-dialog { border-radius: 24px; } .app-toolbar > .button { padding-inline: 12px; font-size: 13px; } }
+
+/* Review: readable controls and comfortable touch targets. */
+.button-primary, html[data-theme="light"] .button-primary { background: #285ac4; border-color: #285ac4; }
+.button-primary:hover:not(:disabled) { background: #204aab; }
+html[data-theme="light"] { --muted: #596272; }
+html[data-theme="dark"] { --muted: #abb5c6; }
+.input { font-size: 16px; }
+.segmented button { min-height: 44px; }
+.date-setup { min-height: 44px; padding: 12px 16px; text-align: left; color: var(--accent); background: var(--accent-soft); border-radius: 14px; }
+.app-overlay { padding-top: max(12px, env(safe-area-inset-top)); }
