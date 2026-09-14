@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { loadDnevnikData, saveCalendarEventsDb, saveDocumentsDb, saveDraftDb, saveEntriesDb, saveFinanceDb, saveImportantDatesDb, saveKnowledgeDb, saveLoyaltyCardsDb, saveMembersDb, savePlanTransactionsDb, savePreviewDb, saveProjectsDb, saveSavingsDb, saveSettingsDb, saveSharedPlansDb, saveSpacesDb } from "@/db";
+import { restoreDnevnikData, loadDnevnikData, saveCalendarEventsDb, saveDocumentsDb, saveDraftDb, saveEntriesDb, saveFinanceDb, saveImportantDatesDb, saveKnowledgeDb, saveLoyaltyCardsDb, saveMembersDb, savePlanTransactionsDb, savePreviewDb, saveProjectsDb, saveSavingsDb, saveSettingsDb, saveSharedPlansDb, saveSpacesDb } from "@/db";
 import type { DbStatus } from "@/db/schema";
 import { clearAllDnevnikStorage, clearEntriesStorage, defaultKnowledge, defaultMembers, defaultSettings, defaultSpaces, importDnevnikData, saveCalendarEvents, saveDocuments, saveDraft, saveEntries, saveFinanceTransactions, saveImportantDates, saveKnowledge, saveLoyaltyCards, saveMembers, savePlanTransactions, savePreviewState, saveProjects, saveSavingsGoals, saveSettings, saveSharedPlans, saveSpaces } from "@/lib/storage";
 import type { AppSettings, CalendarEvent, DiaryEntry, DocumentItem, DraftState, FinanceTransaction, ImportantDate, KnowledgeStore, LoyaltyCard, Member, PlanTransaction, PreviewState, ProjectNode, SavingsGoal, SharedPlan, Space } from "@/lib/types";
@@ -222,14 +222,10 @@ export function useDnevnikData() {
     return { version: "5", exportedAt: new Date().toISOString(), entries, spaces, projects, members, knowledge, draft, preview: previewState, settings, financeTransactions, savingsGoals, sharedPlans, planTransactions, importantDates, calendarEvents, documents, loyaltyCards };
   }, [calendarEvents, documents, draft, entries, financeTransactions, importantDates, knowledge, loyaltyCards, members, planTransactions, previewState, projects, savingsGoals, settings, sharedPlans, spaces]);
 
-  const importData = useCallback((data: unknown) => {
-    if (data && typeof data === "object") {
-      const raw = data as Record<string, unknown>;
-      data = { ...raw, financeTransactions: raw.financeTransactions ?? raw.finance, savingsGoals: raw.savingsGoals ?? raw.savings };
-    }
-    const ok = importDnevnikData(data);
-    if (!ok || !data || typeof data !== "object") return false;
-    const next = data as Partial<Awaited<ReturnType<typeof exportData>>>;
+  const importData = useCallback(async (input: unknown) => {
+    const next = await restoreDnevnikData(input);
+    // The mirror is best-effort; IndexedDB has already committed the entire backup.
+    try { importDnevnikData(next); } catch {}
     setEntriesState(Array.isArray(next.entries) ? next.entries : []);
     setSpacesState(Array.isArray(next.spaces) ? next.spaces : defaultSpaces);
     setProjectsState(Array.isArray(next.projects) ? next.projects : []);
@@ -246,22 +242,6 @@ export function useDnevnikData() {
     setCalendarEventsState(Array.isArray(next.calendarEvents) ? next.calendarEvents : []);
     setDocumentsState(Array.isArray(next.documents) ? next.documents : []);
     setLoyaltyCardsState(Array.isArray(next.loyaltyCards) ? next.loyaltyCards : []);
-    void saveEntriesDb(Array.isArray(next.entries) ? next.entries : []);
-    void saveSpacesDb(Array.isArray(next.spaces) ? next.spaces : defaultSpaces);
-    void saveProjectsDb(Array.isArray(next.projects) ? next.projects : []);
-    void saveMembersDb(Array.isArray(next.members) ? next.members : defaultMembers);
-    void saveKnowledgeDb(next.knowledge ?? defaultKnowledge);
-    void saveSettingsDb(next.settings ?? defaultSettings);
-    void saveDraftDb(next.draft ?? null);
-    void savePreviewDb(next.preview ?? null);
-    void saveFinanceDb(Array.isArray(next.financeTransactions) ? next.financeTransactions : []);
-    void saveSavingsDb(Array.isArray(next.savingsGoals) ? next.savingsGoals : []);
-    void saveSharedPlansDb(Array.isArray(next.sharedPlans) ? next.sharedPlans : []);
-    void savePlanTransactionsDb(Array.isArray(next.planTransactions) ? next.planTransactions : []);
-    void saveImportantDatesDb(Array.isArray(next.importantDates) ? next.importantDates : []);
-    void saveCalendarEventsDb(Array.isArray(next.calendarEvents) ? next.calendarEvents : []);
-    void saveDocumentsDb(Array.isArray(next.documents) ? next.documents : []);
-    void saveLoyaltyCardsDb(Array.isArray(next.loyaltyCards) ? next.loyaltyCards : []);
     return true;
   }, []);
 

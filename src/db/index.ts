@@ -1,6 +1,6 @@
 "use client";
 
-import { defaultKnowledge, defaultMembers, defaultSettings, defaultSpaces, loadCalendarEvents, loadDocuments, loadDraft, loadEntries, loadFinanceTransactions, loadImportantDates, loadKnowledge, loadLoyaltyCards, loadMembers, loadPlanTransactions, loadPreviewState, loadProjects, loadSavingsGoals, loadSettings, loadSharedPlans, loadSpaces } from "@/lib/storage";
+import { validateDnevnikBackup, normalizeEntry, defaultKnowledge, defaultMembers, defaultSettings, defaultSpaces, loadCalendarEvents, loadDocuments, loadDraft, loadEntries, loadFinanceTransactions, loadImportantDates, loadKnowledge, loadLoyaltyCards, loadMembers, loadPlanTransactions, loadPreviewState, loadProjects, loadSavingsGoals, loadSettings, loadSharedPlans, loadSpaces } from "@/lib/storage";
 import type { AppSettings, CalendarEvent, DiaryEntry, DocumentItem, DraftState, FinanceTransaction, ImportantDate, KnowledgeStore, LoyaltyCard, Member, PlanTransaction, PreviewState, ProjectNode, SavingsGoal, SharedPlan, Space } from "@/lib/types";
 import { dbName, dbVersion, migrationBackupKey, migrationMarkerKey, stores, type DnevnikData, type StoreName } from "@/db/schema";
 
@@ -314,4 +314,22 @@ function emptyData(): DnevnikData {
 
 function safeFallbackData(): DnevnikData {
   try { return loadFallbackData(); } catch { return emptyData(); }
+}
+
+/** One transaction: failure leaves every existing collection untouched. */
+export async function restoreDnevnikData(input: unknown): Promise<DnevnikData> {
+  if (!validateDnevnikBackup(input)) throw new Error("Некорректная резервная копия");
+  const raw = input as Partial<DnevnikData> & { finance?: FinanceTransaction[]; savings?: SavingsGoal[] };
+  const present = Object.fromEntries(Object.entries(raw).filter(([,value]) => value !== undefined));
+  const data: DnevnikData = {
+    ...emptyData(), ...present,
+    entries: raw.entries!.map(normalizeEntry),
+    settings: { ...defaultSettings, ...raw.settings },
+    knowledge: { ...defaultKnowledge, ...raw.knowledge },
+    financeTransactions: raw.financeTransactions ?? raw.finance ?? [],
+    savingsGoals: raw.savingsGoals ?? raw.savings ?? []
+  };
+  const db = await openDb();
+  await writeInitialData(db, data);
+  return data;
 }

@@ -76,3 +76,30 @@ it("aborts a failed replacement without deleting previously saved entries", asyn
   await db.saveEntriesDb([{ title: "Missing key" }] as never);
   expect((await db.loadDnevnikData()).data.entries).toEqual([saved]);
 });
+
+it("restores attachments and draft in one committed snapshot", async () => {
+  const db = await import("./index");
+  await db.loadDnevnikData();
+  await db.restoreDnevnikData({entries:[],draft:{quickText:"Новый черновик",source:"typing",timestamp:"2026-09-14"},documents:[{id:"doc",title:"Билет",attachments:[{blob:new Blob(["PDF"],{type:"application/pdf"})}]}]});
+  const restored = (await db.loadDnevnikData()).data;
+  expect(restored.draft?.quickText).toBe("Новый черновик");
+  expect(await restored.documents[0].attachments[0].blob?.text()).toBe("PDF");
+});
+it("rolls back every collection when a later store cannot be cloned", async () => {
+  const db=await import("./index"); await db.loadDnevnikData();
+  await db.saveDraftDb({quickText:"Сохранить",source:"typing",timestamp:"2026-09-14"});
+  await db.saveEntriesDb([{id:"keep",title:"Старое",kind:"note"}] as never);
+  await expect(db.restoreDnevnikData({entries:[],draft:null,documents:[{id:"bad",attachments:[],uncloneable:()=>{}}]})).rejects.toThrow();
+  const restored=(await db.loadDnevnikData()).data;
+  expect(restored.entries[0].id).toBe("keep");expect(restored.draft?.quickText).toBe("Сохранить");
+});
+it("restores without access to localStorage", async () => {
+  vi.stubGlobal("localStorage",{getItem(){throw new Error("blocked");},setItem(){throw new Error("blocked");}});
+  const db=await import("./index");
+  await db.restoreDnevnikData({entries:[],draft:{quickText:"Без зеркала",source:"typing",timestamp:"2026-09-14"}});
+  expect((await db.loadDnevnikData()).data.draft?.quickText).toBe("Без зеркала");
+});
+it("rejects duplicate IDs before import can lose a record", async () => {
+  const db=await import("./index");
+  await expect(db.restoreDnevnikData({entries:[{id:"same",title:"A",kind:"note"},{id:"same",title:"B",kind:"note"}]})).rejects.toThrow();
+});

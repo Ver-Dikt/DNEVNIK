@@ -343,7 +343,23 @@ export function exportDnevnikData() {
   };
 }
 
+export function validateDnevnikBackup(data: unknown): boolean {
+  if (!data || typeof data !== "object") return false;
+  const next = data as Partial<ReturnType<typeof exportDnevnikData>> & { financeTransactions?: FinanceTransaction[]; savingsGoals?: SavingsGoal[]; draft?: DraftState; preview?: PreviewState };
+  if (!Array.isArray(next.entries) || !next.entries.every(entry => entry && typeof entry.id === "string" && typeof entry.title === "string" && typeof entry.kind === "string")) return false;
+  const collections = [next.projects, next.spaces, next.members, next.financeTransactions, next.finance, next.savingsGoals, next.savings, next.sharedPlans, next.planTransactions, next.importantDates, next.calendarEvents, next.documents, next.loyaltyCards];
+  if (collections.some(items => items !== undefined && (!Array.isArray(items) || !items.every(item => item && typeof item.id === "string")))) return false;
+  if (next.draft != null && (typeof next.draft !== "object" || typeof next.draft.quickText !== "string")) return false;
+  if (next.preview != null && (typeof next.preview !== "object" || !next.preview.preview || !Array.isArray(next.preview.preview.items))) return false;
+  if (next.documents?.some(item => typeof item.title !== "string" || !Array.isArray(item.attachments))) return false;
+  if (next.settings != null && (typeof next.settings !== "object" || Array.isArray(next.settings))) return false;
+  if (next.entries.some(entry => !["task", "purchase", "wish", "idea", "note", "inbox"].includes(entry.kind))) return false;
+  for (const items of [next.entries, ...collections]) { if (Array.isArray(items) && new Set(items.map(item => item.id)).size !== items.length) return false; }
+  return true;
+}
+
 export function importDnevnikData(data: unknown): boolean {
+  if (!validateDnevnikBackup(data)) return false;
   if (!data || typeof data !== "object") return false;
   const next = data as Partial<ReturnType<typeof exportDnevnikData>> & { financeTransactions?: FinanceTransaction[]; savingsGoals?: SavingsGoal[]; draft?: DraftState; preview?: PreviewState };
   if (!Array.isArray(next.entries) || !next.entries.every(entry => entry && typeof entry.id === "string" && typeof entry.title === "string" && typeof entry.kind === "string")) return false;
@@ -463,7 +479,7 @@ function migrateStorage(): void {
   localStorage.setItem(storageVersionKey, currentStorageVersion);
 }
 
-function normalizeEntry(entry: DiaryEntry): DiaryEntry {
+export function normalizeEntry(entry: DiaryEntry): DiaryEntry {
   const projectPath = entry.projectPath ?? [];
   const area = entry.area ?? projectPath[0] ?? inferArea(entry);
   const project = entry.project ?? projectPath.at(-1);

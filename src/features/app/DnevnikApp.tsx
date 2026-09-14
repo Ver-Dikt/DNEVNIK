@@ -18,7 +18,7 @@ import type { ScreenId } from "@/features/app/types";
 import { addToSavingsGoal, createSavingsGoal, parseSavingsCommand } from "@/lib/finance";
 import { createEntryFromParsed } from "@/lib/mock-ai";
 import { parseSmartInput } from "@/lib/smart-parser";
-import { loadLearnedRules, rememberIntentRule, saveLearnedRules } from "@/lib/smart-parser/learned-rules";
+import { validateLearnedRules, loadLearnedRules, rememberIntentRule, saveLearnedRules } from "@/lib/smart-parser/learned-rules";
 import type { LearnedRule } from "@/lib/smart-parser/types";
 import { todayIso } from "@/lib/dates";
 import { useDnevnikData } from "@/hooks/use-dnevnik-data";
@@ -63,6 +63,9 @@ export function DnevnikApp() {
   const [editingPreviewIndex, setEditingPreviewIndex] = useState<number | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const restoringRef = useRef(false);
+  const savedPreviewsRef = useRef(new WeakSet<AIParseResult>());
   const [isListening, setIsListening] = useState(false);
   const [voiceMessage, setVoiceMessage] = useState("");
   const [toast, setToast] = useState<{ title: string; detail?: string; action?: () => void; actionLabel?: string } | null>(null);
@@ -317,7 +320,8 @@ export function DnevnikApp() {
   }
 
   function savePreview(target = preview) {
-    if (!target) return;
+    if (!target || savedPreviewsRef.current.has(target)) return;
+    savedPreviewsRef.current.add(target);
     const saved = target.items.map((item) => normalizeSavedEntry(createEntryFromParsed(item), data.spaces, data.projects));
     addEntries(saved);
     setPreview(null);
@@ -469,27 +473,34 @@ export function DnevnikApp() {
   }
 
   function importData(file: File) {
+    if (restoringRef.current) return;
+    restoringRef.current = true;
+    setIsRestoring(true);
     const reader = new FileReader();
     reader.onload = async () => {
       try {
         const imported = decodeBackupFiles(JSON.parse(String(reader.result))) as Awaited<ReturnType<typeof data.exportData>> & { learnedRules?: LearnedRule[] };
         if (!imported || !Array.isArray(imported.entries)) throw new Error("Invalid backup");
         if (!window.confirm("Импорт заменит текущие данные. Сначала будет скачана резервная копия текущего ежедневника. Продолжить?")) return;
+        keepListeningRef.current = false;
+        recognitionRef.current?.abort();
+        recognitionRef.current = null;
+        setIsListening(false);
         await exportData();
-        const ok = data.importData(imported);
+        const ok = await data.importData(imported);
         if (ok) {
           setQuickText(imported.draft?.quickText ?? "");
           setPreview(imported.preview?.preview ?? null);
-          const rules = Array.isArray(imported.learnedRules) ? imported.learnedRules : [];
+          const rules = validateLearnedRules(imported.learnedRules);
           setLearnedRules(rules);
           try { saveLearnedRules(rules); } catch {}
         }
         setToast({ title: ok ? "Импорт выполнен" : "Импорт не выполнен" });
       } catch {
-        setToast({ title: "Импорт не выполнен", detail: "Файл не похож на экспорт." });
-      }
+        setToast({ title: "Импорт не выполнен", detail: "Проверьте файл и доступность хранилища. Прежние записи не заменены." });
+      } finally { restoringRef.current = false; setIsRestoring(false); }
     };
-    reader.onerror = () => setToast({ title: "Файл не прочитан", detail: "Попробуйте выбрать резервную копию ещё раз." });
+    reader.onerror = () => { restoringRef.current = false; setIsRestoring(false); setToast({ title: "Файл не прочитан", detail: "Попробуйте выбрать резервную копию ещё раз." }); };
     reader.readAsText(file);
   }
 
@@ -497,6 +508,8 @@ export function DnevnikApp() {
     const needle = search.trim().toLocaleLowerCase("ru");
     return needle ? data.entries.filter(entry => `${entry.title} ${entry.description ?? ""} ${entry.project ?? ""} ${entry.area ?? ""} ${entry.url ?? ""}`.toLocaleLowerCase("ru").includes(needle)) : [];
   }, [search, data.entries]);
+
+  if (isRestoring) return <main className="grid min-h-screen place-items-center p-6"><Surface role="status" aria-live="polite" className="p-6">Восстанавливаю резервную копию. Не закрывайте приложение…</Surface></main>;
 
   if (!data.status.ready) {
     return <main className="mx-auto grid min-h-screen max-w-xl place-items-center px-4"><Surface className="p-6 text-center font-black">Загружаю ежедневник...</Surface></main>;
