@@ -46,7 +46,7 @@ export function CaptureSheet({
             <X size={19} />
           </button>
         </div>
-        <Textarea autoFocus placeholder="Напиши или скажи что угодно..." value={text} onChange={(event) => onTextChange(event.target.value)} />
+        <Textarea autoFocus readOnly={isListening} aria-label="Текст записи" placeholder="Напиши или скажи что угодно..." value={text} onChange={(event) => onTextChange(event.target.value)} />
         <div className="mt-3 grid grid-cols-[56px_1fr] gap-2">
           <Button className={`h-14 p-0 ${isListening ? "bg-[#ffe5e9] text-[#b4233a]" : ""}`} onClick={onToggleVoice} aria-label={isListening ? "Остановить запись" : "Начать запись"}>
             {isListening ? <Square size={20} /> : <Mic size={22} />}
@@ -59,6 +59,7 @@ export function CaptureSheet({
         {voiceMessage ? <p role="status" aria-live="polite" className="mt-2 text-sm text-[var(--muted)]">{voiceMessage}</p> : null}
 
         <p className="mt-2 text-xs text-[var(--muted)]">Черновик восстанавливается при повторном открытии. Остановите микрофон перед разбором.</p>
+        <details className="mt-3 text-sm text-[var(--muted)]"><summary className="cursor-pointer py-2">Как точнее распределять записи</summary><p className="mt-2">«В хотелки кресло», «В дела позвонить мастеру», «По работе сделать дизайн», «Купить краску для дома». Несколько записей можно вводить с новой строки. Надиктованный текст можно поправить после остановки микрофона.</p></details>
         {preview ? (
           <div className="mt-5 grid gap-3">
             <div className="flex items-center justify-between">

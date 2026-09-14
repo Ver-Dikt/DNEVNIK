@@ -2,7 +2,10 @@ import { fillerWords, numberWords } from "@/lib/smart-parser/phrase-rules";
 import type { NormalizedInput } from "@/lib/smart-parser/types";
 
 export function normalizeInput(input: string): NormalizedInput {
-  let normalized = input
+  const links: string[] = [];
+  const masked = input.replace(/(?:https?:\/\/|www\.)[^\s]+/gi, value => { links.push(value); return `zzlinktoken${links.length - 1}zz`; });
+  let normalized = masked
+    .replace(/\n+/g, "; ")
     .toLowerCase()
     .replace(/[ё]/g, "е")
     .replace(/(^|\s)полторы(?=\s|$)/g, "$11.5")
@@ -22,6 +25,7 @@ export function normalizeInput(input: string): NormalizedInput {
 
   normalized = normalized.replace(/\s+/g, " ").trim();
 
+  normalized = normalized.replace(/zzlinktoken(\d+)zz/g, (_, index) => links[Number(index)]);
   return {
     original: input,
     normalized,

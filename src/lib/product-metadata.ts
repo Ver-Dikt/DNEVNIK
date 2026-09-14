@@ -1,12 +1,16 @@
+import { normalizeWebLink } from "@/lib/web-link";
 import type { ProductMetadata, ProductMetadataProvider } from "@/lib/types";
 
 export class LocalProductMetadataProvider implements ProductMetadataProvider {
   async fetch(url: string): Promise<ProductMetadata> {
-    const parsed = parseUrl(url);
+    const normalized = normalizeWebLink(url);
+    const parsed = normalized ? parseUrl(normalized) : null;
     if (!parsed) return {};
+    if (process.env.NEXT_PUBLIC_BASE_PATH) return { store: storeFromUrl(parsed) };
     try {
       const response = await fetch("/api/product-metadata", {
-        body: JSON.stringify({ url }),
+        signal: AbortSignal.timeout(7000),
+        body: JSON.stringify({ url: normalized }),
         headers: { "content-type": "application/json" },
         method: "POST"
       });

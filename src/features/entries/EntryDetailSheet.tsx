@@ -117,7 +117,7 @@ export function EntryDetailSheet({
               <Segmented
                 className="status-segmented"
                 value={currentWishStatus}
-                onChange={(status: WishStatus) => onChange({ wish: { ...entry.wish, status } })}
+                onChange={(status: WishStatus) => onChange({ status: status === "purchased" ? "done" : "active", completedAt: status === "purchased" ? new Date().toISOString() : undefined, wish: { ...entry.wish, status } })}
                 options={[
                   { label: "Сохранено", value: "saved" },
                   { label: "Думаем", value: "considering" },
@@ -223,7 +223,7 @@ export function EntryDetailSheet({
             </Field>
           </div> : null}
 
-          {advancedOpen && !isPurchase ? <Field label="Ссылка"><Input value={entry.url ?? ""} onChange={(event) => onChange({ url: event.target.value || undefined })} /></Field> : null}
+          {(isWish || advancedOpen) && !isPurchase ? <Field label="Ссылка"><Input autoCapitalize="none" autoCorrect="off" inputMode="url" value={entry.url ?? entry.wish?.url ?? ""} onChange={(event) => { const url = event.target.value || undefined; onChange({ url, wish: isWish ? { ...entry.wish, status: entry.wish?.status ?? "saved", url } : entry.wish }); }} /></Field> : null}
           {advancedOpen ? <Field label="Заметки"><Textarea value={entry.description ?? ""} onChange={(event) => onChange({ description: event.target.value })} /></Field> : null}
 
           {advancedOpen ? <div className="grid gap-2">

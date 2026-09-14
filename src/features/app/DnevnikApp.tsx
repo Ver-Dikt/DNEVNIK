@@ -370,16 +370,19 @@ export function DnevnikApp() {
     setIsListening(true);
     setVoiceMessage("Подключаю микрофон…");
     recognition.onstart = () => {
+      if (recognitionRef.current !== recognition) return;
       setIsListening(true);
       setVoiceMessage("Слушаю. Можно делать паузы.");
     };
     recognition.onend = () => {
+      if (recognitionRef.current !== recognition) return;
       recognitionRef.current = null;
       if (!keepListeningRef.current) return;
       voiceBaseRef.current = latestTextRef.current.trim();
       window.setTimeout(() => keepListeningRef.current ? startRecognition(Recognition) : undefined, 250);
     };
     recognition.onerror = (event) => {
+      if (recognitionRef.current !== recognition) return;
       if (keepListeningRef.current && (event.error === "no-speech" || event.error === "aborted")) {
         setVoiceMessage("Слушаю. Можно продолжать после паузы.");
         return;
@@ -395,6 +398,7 @@ export function DnevnikApp() {
       setVoiceMessage(messages[event.error] ?? "Распознавание остановлено. Текст сохранён в поле; можно продолжить вручную.");
     };
     recognition.onresult = (event) => {
+      if (recognitionRef.current !== recognition) return;
       const transcript = Array.from(event.results).map((result) => result[0].transcript).join(" ").trim();
       const next = [voiceBaseRef.current, transcript].filter(Boolean).join(" ");
       setQuickText(next);
@@ -524,7 +528,7 @@ export function DnevnikApp() {
           <PurchasesView entries={data.entries} members={data.members} spaces={data.spaces} status={purchaseView} onAdd={() => createManualEntry("purchase", { area: "Дом", projectPath: ["Дом"], assignedTo: "shared", visibility: "shared" })} onStatusChange={setPurchaseView} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
         {screen === "wishlist" ? (
-          <WishlistView defaultCurrency={data.settings.defaultCurrency} entries={data.entries} members={data.members} planTransactions={data.planTransactions} sharedPlans={data.sharedPlans} spaces={data.spaces} onChangeEntries={data.setEntries} onChangePlanTransactions={data.setPlanTransactions} onChangeSharedPlans={data.setSharedPlans} onCreateManual={(planned) => createManualEntry("wish", planned ? { wish: { status: "planned", owner: "shared", currency: data.settings.defaultCurrency }, assignedTo: "shared", visibility: "shared" } : undefined)} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
+          <WishlistView defaultCurrency={data.settings.defaultCurrency} entries={data.entries} members={data.members} planTransactions={data.planTransactions} sharedPlans={data.sharedPlans} spaces={data.spaces} onChangeEntries={data.setEntries} onChangePlanTransactions={data.setPlanTransactions} onChangeSharedPlans={data.setSharedPlans} onCreateManual={(planned, owner = "me") => createManualEntry("wish", { wish: { status: planned ? "planned" : "saved", owner, currency: data.settings.defaultCurrency }, assignedTo: owner, visibility: owner === "shared" ? "shared" : "private" })} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
         {screen === "money" ? (
           <MoneyView entries={data.entries} members={data.members} sharedPlans={data.sharedPlans} spaces={data.spaces} onOpen={(entry) => setDetailId(entry.id)} onComplete={completeEntry} />

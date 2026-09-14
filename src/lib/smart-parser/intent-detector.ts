@@ -9,6 +9,8 @@ export function detectIntent(text: string, learnedRules: LearnedRule[] = []): In
     }
   }
 
+  if (/(?:^|[^\p{L}])(?:в (?:мои |наши )?хотелки|хочу потом купить)(?![\p{L}])/iu.test(text)) return { intent: "wish", confidence: 0.97, matchedText: "explicit wish" };
+  if (/(?:^|[^\p{L}])(?:в (?:мои )?дела|в задачи|запиши задачу|напомни)(?![\p{L}])/iu.test(text)) return { intent: "task", confidence: 0.97, matchedText: "explicit task" };
   let best: IntentResult = { intent: "unknown", confidence: 0.18 };
 
   if (/(хочу|хотим|давай\s+сохраним|сохрани).{0,40}(потом|хотелк|может|когда-нибудь)|\bв\s+(?:мои|наши)?\s*хотелки\b/i.test(text)) {
