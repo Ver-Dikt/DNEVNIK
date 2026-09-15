@@ -3,7 +3,7 @@
 import { useModalLayer } from "@/hooks/use-modal-layer";
 import { relationshipDays, upcomingImportantDate } from "@/lib/important-dates";
 import { todayIso } from "@/lib/dates";
-import { CalendarHeart, CheckCircle2, Plus, X } from "lucide-react";
+import { CalendarHeart, CheckCircle2, ChevronRight, GraduationCap, Plus, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { Button, Field, Input, Segmented, Surface } from "@/components/ui/native";
 import { EntryCard } from "@/features/entries/EntryCard";
@@ -36,6 +36,11 @@ export function UsView({ calendarEvents, entries, importantDates, sharedPlans, s
           <Surface className="couple-stat-card accent"><b>{relationship.anniversary ?? "—"}</b><span>до годовщины</span></Surface>
         </div>
       </div>
+      <button className="school-quick-link" type="button" onClick={() => onNavigate("school")} aria-label="Открыть раздел Школа">
+        <span className="school-quick-icon" aria-hidden="true"><GraduationCap size={22} /></span>
+        <span><b>Школа</b><small>Расписание и что взять с собой</small></span>
+        <ChevronRight size={20} aria-hidden="true" />
+      </button>
       {relationship.together === null ? <button className="date-setup" type="button" onClick={() => onNavigate("settings")}>Указать дату знакомства или начала отношений →</button> : null}
       <Surface className="summary-panel p-4">
         <div className="flex items-center justify-between gap-3">

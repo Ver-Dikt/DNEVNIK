@@ -14,6 +14,7 @@ import { DocumentsHubView } from "@/features/family/FamilyViews";
 import { PlanView } from "@/features/planner/PlanView";
 import { PurchasesView } from "@/features/purchases/PurchasesView";
 import { WishlistView } from "@/features/wishlist/WishlistView";
+import { SchoolView } from "@/features/school/SchoolView";
 import type { ScreenId } from "@/features/app/types";
 import { addToSavingsGoal, createSavingsGoal, parseSavingsCommand } from "@/lib/finance";
 import { createEntryFromParsed } from "@/lib/mock-ai";
@@ -148,7 +149,7 @@ export function DnevnikApp() {
   }, []);
 
   useEffect(() => {
-    const screens: ScreenId[] = ["us", "plan", "tasks", "work", "purchases", "wishlist", "money", "documents", "ideas", "settings"];
+    const screens: ScreenId[] = ["us", "plan", "tasks", "school", "work", "purchases", "wishlist", "money", "documents", "ideas", "settings"];
     const applyRoute = () => {
       const target = window.location.hash.slice(1) as ScreenId;
       setScreen(screens.includes(target) ? target : "us");
@@ -534,6 +535,7 @@ export function DnevnikApp() {
         {screen === "tasks" ? (
           <TasksView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={(assignedTo = "me") => createManualEntry("task", { assignedTo, visibility: assignedTo === "shared" ? "shared" : "private" })} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
+        {screen === "school" ? <SchoolView /> : null}
         {screen === "work" ? (
           <WorkView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={() => createManualEntry("task", { area: "Работа", projectPath: ["Работа"], domain: "work" })} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}

@@ -1,6 +1,6 @@
 "use client";
 
-import { BriefcaseBusiness, CalendarDays, FileText, Gift, HeartHandshake, Lightbulb, ListTodo, Settings, ShoppingCart, WalletCards, LayoutGrid, X, type LucideProps } from "lucide-react";
+import { BriefcaseBusiness, CalendarDays, FileText, Gift, GraduationCap, HeartHandshake, Lightbulb, ListTodo, Settings, ShoppingCart, WalletCards, LayoutGrid, X, type LucideProps } from "lucide-react";
 import { useRef, useState } from "react";
 import type { ScreenId } from "@/features/app/types";
 import { useModalLayer } from "@/hooks/use-modal-layer";
@@ -10,6 +10,7 @@ const navItems: Array<{ id: ScreenId; label: string; detail: string; icon: React
   { id: "plan", label: "Календарь", detail: "День, неделя и месяц", icon: CalendarDays },
   { id: "tasks", label: "Задачи", detail: "Что нужно сделать", icon: ListTodo },
   { id: "purchases", label: "Покупки", detail: "Список и заказы", icon: ShoppingCart },
+  { id: "school", label: "Школа", detail: "Уроки Богдана и что взять", icon: GraduationCap },
   { id: "work", label: "Работа", detail: "Рабочие записи", icon: BriefcaseBusiness },
   { id: "wishlist", label: "Хотелки", detail: "Желания и планы", icon: Gift },
   { id: "money", label: "Деньги", detail: "Покупки и бюджет", icon: WalletCards },
