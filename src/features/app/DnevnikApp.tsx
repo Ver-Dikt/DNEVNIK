@@ -15,6 +15,8 @@ import { PlanView } from "@/features/planner/PlanView";
 import { PurchasesView } from "@/features/purchases/PurchasesView";
 import { WishlistView } from "@/features/wishlist/WishlistView";
 import { SchoolView } from "@/features/school/SchoolView";
+import { CloudSyncButton } from "@/features/sync/CloudSyncButton";
+import { useCloudSync } from "@/hooks/use-cloud-sync";
 import type { ScreenId } from "@/features/app/types";
 import { addToSavingsGoal, createSavingsGoal, parseSavingsCommand } from "@/lib/finance";
 import { createEntryFromParsed } from "@/lib/mock-ai";
@@ -51,6 +53,7 @@ const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export function DnevnikApp() {
   const data = useDnevnikData();
+  const cloud = useCloudSync({ ready: data.status.ready, exportData: data.exportData, importData: data.importData });
   const searchRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [screen, setScreen] = useState<ScreenId>("us");
@@ -522,6 +525,7 @@ export function DnevnikApp() {
       <div className="min-w-0">
         <div className="app-toolbar">
           <div className="global-search"><Search size={19} aria-hidden="true" /><input ref={searchRef} aria-label="Поиск по всем записям" title="Поиск · Ctrl K" placeholder="Найти запись…" value={search} onChange={event => setSearch(event.target.value)} />{search ? <button type="button" aria-label="Очистить поиск" className="icon-control" onClick={() => { setSearch(""); searchRef.current?.focus(); }}><X size={16} /></button> : null}</div>
+          <CloudSyncButton email={cloud.email} state={cloud.state} message={cloud.message} onSendLink={cloud.sendMagicLink} onSignOut={cloud.signOut} onSync={cloud.saveNow} />
           <Button onClick={() => setCaptureOpen(true)} variant="primary" aria-label="Быстрый ввод: текст или голос" title="Добавить · Ctrl Enter"><Mic size={19} />Добавить</Button>
         </div>
         {search.trim() ? <Surface className="search-results" aria-label="Результаты поиска"><p className="px-3 py-2 text-sm text-[var(--muted)]">{searchResults.length ? "Найдено: " + searchResults.length : "Ничего не найдено. Попробуйте другое слово."}</p>{searchResults.slice(0, 50).map(entry => <button type="button" className="search-result" key={entry.id} onClick={() => setDetailId(entry.id)}><b>{entry.title}</b><span>{entry.area ?? "Личное"} · {kindLabels[entry.kind] ?? "Запись"}</span></button>)}{searchResults.length > 50 ? <p className="p-3 text-sm text-[var(--muted)]">Показаны первые 50 записей. Уточните поиск.</p> : null}</Surface> : null}

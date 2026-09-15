@@ -26,7 +26,9 @@ describe("PWA updates", () => {
     let done: Promise<void> | undefined;
     handlers.activate({ waitUntil: (promise: Promise<void>) => { done = promise; } });
     await done;
-    expect(caches.delete).toHaveBeenCalledExactlyOnceWith("dnevnik-v12");
+    expect(caches.delete).toHaveBeenCalledTimes(2);
+    expect(caches.delete.mock.calls.map(([key]) => key)).toEqual(["dnevnik-v12", "dnevnik-v17-final"]);
+    expect(caches.delete).not.toHaveBeenCalledWith("other-app");
   });
   it("does not intercept API or third party requests", () => {
     const { handlers } = setup();

@@ -1,4 +1,4 @@
-const CACHE_NAME = "dnevnik-v17-final";
+const CACHE_NAME = "dnevnik-v18-cloud-sync";
 const scopePath = new URL(self.registration.scope).pathname;
 const BASE_PATH = scopePath.endsWith("/") ? scopePath.slice(0, -1) : scopePath;
 const APP_SHELL = [
