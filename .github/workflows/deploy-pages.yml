@@ -43,6 +43,8 @@ jobs:
         env:
           GITHUB_PAGES: "true"
           NEXT_PUBLIC_BASE_PATH: /DNEVNIK
+          NEXT_PUBLIC_SUPABASE_URL: https://bbzrqwjimmkwwosjwkxi.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_K9c8UKKFISSajT2IMKiEVQ_C2sQHVf8
 
       - name: Publish to gh-pages
         env:
