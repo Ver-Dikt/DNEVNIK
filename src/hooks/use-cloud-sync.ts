@@ -84,17 +84,20 @@ export function useCloudSync({ ready, exportData, importData }: { ready: boolean
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
   }, [exportData, ready, saveNow, session]);
 
-  const sendMagicLink = useCallback(async (email: string) => {
+  const authenticate = useCallback(async (mode: "signin" | "signup", email: string, password: string) => {
     const client = clientRef.current;
     if (!client) return { ok: false, message: "Supabase не настроен" };
     setState("connecting");
     const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
     const emailRedirectTo = `${window.location.origin}${basePath}/`;
-    const { error } = await client.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo } });
-    if (error) { setState("signed-out"); return { ok: false, message: "Не удалось отправить ссылку. Проверь адрес и повтори." }; }
-    setState("signed-out"); return { ok: true, message: "Ссылка для входа отправлена на почту." };
+    const result = mode === "signup"
+      ? await client.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo } })
+      : await client.auth.signInWithPassword({ email: email.trim(), password });
+    if (result.error) { setState("signed-out"); return { ok: false, message: mode === "signup" ? "Не удалось создать аккаунт. Проверь адрес и длину пароля." : "Не удалось войти. Проверь почту и пароль." }; }
+    if (mode === "signup" && !result.data.session) { setState("signed-out"); return { ok: true, message: "Аккаунт создан. Подтверди почту, затем вернись и нажми «Войти»." }; }
+    return { ok: true, message: "Вход выполнен. Подключаю облачную копию…" };
   }, []);
 
   const signOut = useCallback(async () => { await clientRef.current?.auth.signOut(); initializedUserRef.current = null; setSession(null); setState("signed-out"); setMessage(""); }, []);
-  return { email: session?.user.email ?? null, state, message, sendMagicLink, signOut, saveNow };
+  return { email: session?.user.email ?? null, state, message, authenticate, signOut, saveNow };
 }

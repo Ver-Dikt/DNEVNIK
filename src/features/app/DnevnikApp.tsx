@@ -525,7 +525,7 @@ export function DnevnikApp() {
       <div className="min-w-0">
         <div className="app-toolbar">
           <div className="global-search"><Search size={19} aria-hidden="true" /><input ref={searchRef} aria-label="Поиск по всем записям" title="Поиск · Ctrl K" placeholder="Найти запись…" value={search} onChange={event => setSearch(event.target.value)} />{search ? <button type="button" aria-label="Очистить поиск" className="icon-control" onClick={() => { setSearch(""); searchRef.current?.focus(); }}><X size={16} /></button> : null}</div>
-          <CloudSyncButton email={cloud.email} state={cloud.state} message={cloud.message} onSendLink={cloud.sendMagicLink} onSignOut={cloud.signOut} onSync={cloud.saveNow} />
+          <CloudSyncButton email={cloud.email} state={cloud.state} message={cloud.message} onAuthenticate={cloud.authenticate} onSignOut={cloud.signOut} onSync={cloud.saveNow} />
           <Button onClick={() => setCaptureOpen(true)} variant="primary" aria-label="Быстрый ввод: текст или голос" title="Добавить · Ctrl Enter"><Mic size={19} />Добавить</Button>
         </div>
         {search.trim() ? <Surface className="search-results" aria-label="Результаты поиска"><p className="px-3 py-2 text-sm text-[var(--muted)]">{searchResults.length ? "Найдено: " + searchResults.length : "Ничего не найдено. Попробуйте другое слово."}</p>{searchResults.slice(0, 50).map(entry => <button type="button" className="search-result" key={entry.id} onClick={() => setDetailId(entry.id)}><b>{entry.title}</b><span>{entry.area ?? "Личное"} · {kindLabels[entry.kind] ?? "Запись"}</span></button>)}{searchResults.length > 50 ? <p className="p-3 text-sm text-[var(--muted)]">Показаны первые 50 записей. Уточните поиск.</p> : null}</Surface> : null}
