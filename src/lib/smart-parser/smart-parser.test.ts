@@ -340,6 +340,13 @@ describe("parseSmartInput", () => {
 });
 
 describe("voice capture regressions", () => {
+  it("keeps the complete dictation in every parsed entry description", () => {
+    const text = "Добавить голосовой ввод: разрешить доступ, проверить запись и сохранить результат.";
+    const items = parseSmartInput(text, ctx).items;
+    expect(items.length).toBeGreaterThan(1);
+    expect(items.every((item) => item.description === text)).toBe(true);
+  });
+
   it("cleans Russian intent and date words without repeating Купить", () => {
     const item = parseSmartInput("Завтра купить молоко 2 литра за 180 рублей", ctx).items[0];
     expect(item.title).toBe("Купить молоко 2 литра за 180 рублей");

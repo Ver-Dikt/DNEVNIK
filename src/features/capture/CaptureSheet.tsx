@@ -64,7 +64,7 @@ export function CaptureSheet({
           <div className="mt-5 grid gap-3">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-black">Я понял так</h3>
-              <Button className="px-4 font-bold" onClick={onSaveAll} variant="primary">Сохранить всё</Button>
+              <Button className="px-4 font-bold" onClick={onSaveAll} variant="primary">Сохранить записи</Button>
             </div>
             {preview.items.map((item, index) => (
               <div className="rounded-3xl border border-[var(--line)] bg-[var(--surface-soft)] p-3 shadow-sm" key={`${item.title}-${index}`}>
@@ -72,6 +72,7 @@ export function CaptureSheet({
                   <div className="min-w-0">
                     <span className="badge">{kindLabels[item.kind]}</span>
                     <h4 className="mt-2 text-lg font-black">{item.title}</h4>
+                    {item.description ? <p className="mt-2 whitespace-pre-wrap text-sm leading-5 text-[var(--muted)]">{item.description}</p> : null}
                   </div>
                   <button className="grid h-9 w-9 place-items-center rounded-full bg-black/[.05]" onClick={() => onRemovePreview(index)} type="button" aria-label="Убрать из preview">
                     <X size={16} />

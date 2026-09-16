@@ -59,6 +59,9 @@ export function EntryDetailSheet({
           <Field label="Название">
             <Input value={entry.title} onChange={(event) => onChange({ title: event.target.value })} />
           </Field>
+          <Field label="Описание">
+            <Textarea value={entry.description ?? ""} onChange={(event) => onChange({ description: event.target.value })} placeholder="Подробности записи" />
+          </Field>
           <div className="grid gap-3 sm:grid-cols-2">
             {showStructure ? (
               <Field label="Тип">
@@ -224,7 +227,6 @@ export function EntryDetailSheet({
           </div> : null}
 
           {(isWish || advancedOpen) && !isPurchase ? <Field label="Ссылка"><Input autoCapitalize="none" autoCorrect="off" inputMode="url" value={entry.url ?? entry.wish?.url ?? ""} onChange={(event) => { const url = event.target.value || undefined; onChange({ url, wish: isWish ? { ...entry.wish, status: entry.wish?.status ?? "saved", url } : entry.wish }); }} /></Field> : null}
-          {advancedOpen ? <Field label="Заметки"><Textarea value={entry.description ?? ""} onChange={(event) => onChange({ description: event.target.value })} /></Field> : null}
 
           {advancedOpen ? <div className="grid gap-2">
             <div className="text-sm font-black">Чеклист</div>

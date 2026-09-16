@@ -69,7 +69,10 @@ function parseSegment(segment: string, originalInput: string, context: ParserCon
   return {
     kind,
     title: refineTitle(cleanTitle(segment), kind, domain.area),
-    description: segment,
+    // Keep the complete dictation in the editable description. The parser can
+    // split it into several entries, but the user's original context must not
+    // disappear behind internal metadata.
+    description: originalInput.trim(),
     area,
     project: projectName,
     assignedTo,
