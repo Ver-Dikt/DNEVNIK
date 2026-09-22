@@ -3,7 +3,7 @@
 import { encodeBackupFiles, decodeBackupFiles } from "@/lib/backup-files";
 import { Mic, Search, X } from "lucide-react";
 import { toggleEntryCompletion } from "@/lib/entry-actions";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DesktopNav, MobileNav } from "@/components/navigation/AppNav";
 import { Button, Surface } from "@/components/ui/native";
 import { kindLabels } from "@/features/shared/entry-utils";
@@ -53,7 +53,6 @@ const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export function DnevnikApp() {
   const data = useDnevnikData();
-  const cloud = useCloudSync({ ready: data.status.ready, exportData: data.exportData, importData: data.importData });
   const searchRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [screen, setScreen] = useState<ScreenId>("us");
@@ -83,6 +82,19 @@ export function DnevnikApp() {
   const dbReady = data.status.ready;
   const persistDraft = data.setDraft;
   const persistPreviewState = data.setPreviewState;
+  const exportDnevnikData = data.exportData;
+  const importDnevnikData = data.importData;
+  const cloudExportData = useCallback(async () => ({ ...await exportDnevnikData(), learnedRules }), [exportDnevnikData, learnedRules]);
+  const cloudImportData = useCallback(async (input: unknown) => {
+    const imported = await importDnevnikData(input);
+    if (imported && input && typeof input === "object" && "learnedRules" in input) {
+      const rules = validateLearnedRules((input as { learnedRules?: unknown }).learnedRules);
+      setLearnedRules(rules);
+      try { saveLearnedRules(rules); } catch {}
+    }
+    return imported;
+  }, [importDnevnikData]);
+  const cloud = useCloudSync({ ready: data.status.ready, exportData: cloudExportData, importData: cloudImportData });
 
   useEffect(() => {
     queueMicrotask(() => setLearnedRules(loadLearnedRules()));
