@@ -1,13 +1,18 @@
 "use client";
 
 import { Bot, Check, Send, Sparkles, Square, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button, Field, Select, Surface, Textarea } from "@/components/ui/native";
 import { useModalLayer } from "@/hooks/use-modal-layer";
 import type { AIParseResult, DiaryEntry } from "@/lib/types";
 
+const subscribeToHost = () => () => {};
+const localHost = () => ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
+
 export function LocalAssistant({ entries, onProposal }: { entries: DiaryEntry[]; onProposal: (proposal: AIParseResult) => void }) {
   const [open, setOpen] = useState(false);
+  const available = useSyncExternalStore(subscribeToHost, localHost, () => false);
+  if (!available) return null;
   return <><div className="assistant-toolbar"><Button onClick={() => setOpen(true)}><Bot size={18} />Локальный помощник<Sparkles size={14} /></Button></div>{open ? <AssistantDialog entries={entries} onClose={() => setOpen(false)} onProposal={proposal => { setOpen(false); onProposal(proposal); }} /> : null}</>;
 }
 
@@ -26,7 +31,7 @@ function AssistantDialog({ entries, onClose, onProposal }: { entries: DiaryEntry
   async function check() {
     const here = ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
     setLocal(here);
-    if (!here) { setMessage("Откройте на компьютере ярлык «Ежедневник с ИИ». Он запустит установленную Ollama и локальную версию приложения. На телефоне остаётся обычный разбор и синхронизация Supabase."); return; }
+    if (!here) { setMessage("Локальный помощник доступен при запуске ежедневника на компьютере."); return; }
     try {
       const response = await fetch("/api/local-ai", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "status" }) });
       const result = await response.json();

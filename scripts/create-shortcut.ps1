@@ -1,6 +1,5 @@
 ﻿param(
   [switch]$CopyToDesktop,
-  [switch]$LocalAI,
   [string]$DesktopPath = [Environment]::GetFolderPath('DesktopDirectory')
 )
 
@@ -43,26 +42,21 @@ try {
   $stream.Dispose()
 }
 
-$shortcutName = if ($LocalAI) { 'Ежедневник с ИИ.lnk' } else { 'Ежедневник.lnk' }
+$shortcutName = 'Ежедневник.lnk'
 $shortcutPath = Join-Path $projectRoot $shortcutName
 $shell = New-Object -ComObject WScript.Shell
 try {
   $shortcut = $shell.CreateShortcut($shortcutPath)
-  $shortcut.TargetPath = $browser
-  $shortcut.Arguments = '--profile-directory=Default --app=' + $appUrl
-  if ($LocalAI) {
-    $node = (Get-Command node -ErrorAction Stop).Source
-    $entrypoint = Join-Path $projectRoot 'scripts\start-local-ai.mjs'
-    $shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $shortcut.Arguments = '-NoProfile -WindowStyle Hidden -Command "& ''' + $node.Replace("'", "''") + ''' ''' + $entrypoint.Replace("'", "''") + '''"'
-  }
+  $node = (Get-Command node -ErrorAction Stop).Source
+  $entrypoint = Join-Path $projectRoot 'scripts\start-local-ai.mjs'
+  $shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+  $shortcut.Arguments = '-NoProfile -WindowStyle Hidden -Command "& ''' + $node.Replace("'", "''") + ''' ''' + $entrypoint.Replace("'", "''") + '''"'
   $shortcut.WorkingDirectory = $projectRoot
   $shortcut.IconLocation = $iconPath + ',0'
   $shortcut.Description = 'Ежедневник — задачи, покупки и заметки с синхронизацией Supabase'
   $shortcut.Save()
   $saved = $shell.CreateShortcut($shortcutPath)
-  if ($LocalAI) { if ($saved.Arguments -notlike '*start-local-ai.mjs*') { throw 'Local shortcut verification failed.' } }
-  elseif ($saved.TargetPath -ne $browser -or $saved.Arguments -notlike '*--app=https://ver-dikt.github.io/DNEVNIK/*') { throw 'Shortcut verification failed.' }
+  if ($saved.Arguments -notlike '*start-local-ai.mjs*') { throw 'Shortcut verification failed.' }
   if ($CopyToDesktop) {
     if (-not (Test-Path -LiteralPath $DesktopPath -PathType Container)) { throw 'Desktop directory does not exist.' }
     $desktopShortcut = Join-Path $DesktopPath $shortcutName
@@ -71,6 +65,15 @@ try {
       if ($existing.Arguments -notlike '*https://ver-dikt.github.io/DNEVNIK/*' -and $existing.Arguments -notlike '*start-local-ai.mjs*') { throw 'An unrelated shortcut already exists on the desktop.' }
     }
     Copy-Item -LiteralPath $shortcutPath -Destination $desktopShortcut -Force
+  }
+  # Remove only the obsolete launcher created by the earlier two-shortcut setup.
+  $obsoletePaths = @((Join-Path $projectRoot 'Ежедневник с ИИ.lnk'))
+  if ($CopyToDesktop) { $obsoletePaths += Join-Path $DesktopPath 'Ежедневник с ИИ.lnk' }
+  foreach ($obsoletePath in $obsoletePaths) {
+    if (Test-Path -LiteralPath $obsoletePath -PathType Leaf) {
+      $obsolete = $shell.CreateShortcut($obsoletePath)
+      if ($obsolete.Arguments.Contains($entrypoint)) { Remove-Item -LiteralPath $obsoletePath -Force }
+    }
   }
   [pscustomobject]@{ Shortcut = $shortcutPath; Browser = $saved.TargetPath; Arguments = $saved.Arguments; Icon = $saved.IconLocation; DesktopCopy = [bool]$CopyToDesktop } | ConvertTo-Json
 } finally {
