@@ -34,6 +34,8 @@ export function PlanView(props: Props) {
   const eventsOn = (date: string) => events.filter(event => event.startDate <= date && date <= (event.endDate ?? event.startDate));
   const countOn = (date: string) => entriesOn(date).length + datesOn(date).length + eventsOn(date).length;
   const days = mode === "month" ? getMonthGrid(selectedDate) : getWeekDays(selectedDate);
+  const weekDate = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "short", ...(days[0].slice(0, 4) !== days[6].slice(0, 4) ? { year: "numeric" } : {}) });
+  const weekLabel = `${weekDate(days[0])} – ${weekDate(days[6])}${days[0].slice(0, 4) === days[6].slice(0, 4) ? ` ${days[6].slice(0, 4)}` : ""}`;
   function shift(direction: number) { onDateChange(mode === "month" ? addMonths(selectedDate, direction) : addDays(selectedDate, direction * (mode === "week" ? 7 : 1))); }
   function openDate(date: string) { onDateChange(date); setOpenedDate(date); }
 
@@ -47,7 +49,7 @@ export function PlanView(props: Props) {
       if (Math.abs(dx) > 64 && Math.abs(dy) < Math.abs(dx) / 2) shift(dx > 0 ? -1 : 1);
     }}>
       <div className="calendar-mode"><Segmented options={[{ label: "День", value: "day" }, { label: "Неделя", value: "week" }, { label: "Месяц", value: "month" }]} value={mode} onChange={onModeChange} /></div>
-      <div className="calendar-period"><Button aria-label="Предыдущий период" onClick={() => shift(-1)}><ChevronLeft size={19} /></Button><h2>{mode === "day" ? formatHeaderDate(selectedDate) : mode === "week" ? `${days[0].slice(8)}–${days[6].slice(8)} · ${formatMonth(selectedDate)}` : formatMonth(selectedDate)}</h2><Button aria-label="Следующий период" onClick={() => shift(1)}><ChevronRight size={19} /></Button></div>
+      <div className="calendar-period"><Button aria-label="Предыдущий период" onClick={() => shift(-1)}><ChevronLeft size={19} /></Button><h2>{mode === "day" ? formatHeaderDate(selectedDate) : mode === "week" ? weekLabel : formatMonth(selectedDate)}</h2><Button aria-label="Следующий период" onClick={() => shift(1)}><ChevronRight size={19} /></Button></div>
       {mode === "day" ? <div className="calendar-focus-day"><CalendarDays size={27} /><span>{shortWeekday(selectedDate)}</span><strong>{Number(selectedDate.slice(8))}</strong><p>{countOn(selectedDate) ? `На эту дату: ${countOn(selectedDate)}` : "Свободный день"}</p><Button variant="primary" onClick={() => openDate(selectedDate)}>Открыть день</Button><label>Выбрать дату<input className="input" type="date" aria-label="Выбрать дату" value={selectedDate} onChange={event => { if (event.target.value) onDateChange(event.target.value); }} /></label></div> : <>
         <div className="calendar-week-labels">{["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map(day => <span key={day}>{day}</span>)}</div>
         <div className={`calendar-grid is-${mode}`} aria-label={mode === "week" ? "Сетка недели" : "Сетка месяца"}>
