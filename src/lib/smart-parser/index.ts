@@ -133,6 +133,11 @@ function parseSegment(segment: string, originalInput: string, context: ParserCon
 }
 
 function splitSemantically(text: string, projectHint?: string): string[] {
+  // Explicit boundaries must be processed before shopping-list expansion.
+  // Otherwise a dictation such as "купить молоко; позвонить маме" becomes
+  // a single purchase or spreads the purchase intent onto a separate task.
+  const explicitSegments = text.split(/\s*;\s*|\s*[,;]?\s+(?:новая запись|следующая запись)\s*[:,.-]?\s*/i).filter(Boolean);
+  if (explicitSegments.length > 1) return explicitSegments.flatMap(segment => splitSemantically(segment, projectHint));
   const prepared = propagatePronoun(text, projectHint ?? inferObjectContext(text));
 
   const commaIdeaSplit = prepared.match(/^(.+?),\s*(.+?)\s+и\s+идея\s+(.+)$/i);

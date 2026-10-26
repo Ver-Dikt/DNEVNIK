@@ -111,6 +111,10 @@ export const intentPhrases: Record<SmartIntent, string[]> = {
     "доделать",
     "отправить",
     "позвонить",
+    "оплатить",
+    "оплачивать",
+    "домонтировать",
+    "отдать",
     "написать",
     "забрать",
     "привезти",
@@ -139,7 +143,7 @@ export const intentToKind: Partial<Record<SmartIntent, EntryKind>> = {
   reminder: "task",
   waiting: "task",
   link: "inbox",
-  note: "inbox",
+  note: "note",
   project_related: "task"
 };
 

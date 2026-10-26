@@ -2,9 +2,10 @@
 
 import type { Session, SupabaseClient } from "@supabase/supabase-js";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { decodeBackupFiles, encodeBackupFiles } from "@/lib/backup-files";
+import { encodeBackupFiles } from "@/lib/backup-files";
 import { cloudKnownState, mergeCloudSnapshots, prepareLocalSnapshot, sameSnapshotContent, type CloudKnownState } from "@/lib/cloud-merge";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
+import { commitCloudSnapshot } from "@/lib/cloud-sync";
 
 type ExportData = () => Promise<Record<string, unknown>>;
 type ImportData = (input: unknown) => Promise<boolean>;
@@ -17,6 +18,7 @@ export function useCloudSync({ ready, exportData, importData }: { ready: boolean
   const latestExportRef = useRef(exportData);
   const latestImportRef = useRef(importData);
   const syncingRef = useRef(false);
+  const activeUserRef = useRef<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [state, setState] = useState<CloudState>(() => process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ? "connecting" : "disabled");
   const [message, setMessage] = useState("");
@@ -31,49 +33,45 @@ export function useCloudSync({ ready, exportData, importData }: { ready: boolean
     setMessage(initial ? "Безопасно объединяю данные устройства и облака…" : "Проверяю изменения на других устройствах…");
     try {
       const now = new Date().toISOString();
-      const local = await latestExportRef.current();
       const knownState = loadKnownState(user.id);
-      const preparedLocal = prepareLocalSnapshot(local, knownState, now);
-      const { data, error } = await client.from("app_state").select("data").eq("user_id", user.id).maybeSingle();
-      if (error) throw error;
-      const encodedRemote = isRecord(data?.data) ? data.data : {};
-      const remote = decodeBackupFiles(encodedRemote) as Record<string, unknown>;
-      // On a device's first sync, prefer established cloud preferences while
-      // still unioning every record. A blank legacy cloud row is never treated
-      // as authoritative over populated phone data.
-      const localForMerge = !knownState && hasUserContent(remote) ? { ...preparedLocal, exportedAt: "" } : preparedLocal;
-      const merged = mergeCloudSnapshots(localForMerge, remote, now);
-      const encodedMerged = await encodeBackupFiles(merged);
-      const encodedLocal = await encodeBackupFiles(local);
+      const isCurrent = () => activeUserRef.current === user.id;
+      const { local, merged } = await commitCloudSnapshot(client, user.id, () => latestExportRef.current(), knownState, isCurrent);
+      if (!isCurrent()) return false;
+      // Preserve edits made locally while the network request was in flight.
+      const latestLocal = await latestExportRef.current();
+      const rebased = mergeCloudSnapshots(prepareLocalSnapshot(latestLocal, cloudKnownState(local), now), merged, now);
+      const encodedMerged = await encodeBackupFiles(rebased);
+      const encodedLocal = await encodeBackupFiles(latestLocal);
       if (!isRecord(encodedMerged) || !isRecord(encodedLocal)) throw new Error("Cloud snapshot encoding failed");
+      if (!isCurrent()) return false;
       if (!sameSnapshotContent(encodedLocal, encodedMerged)) {
-        const imported = await latestImportRef.current(merged);
+        const imported = await latestImportRef.current(rebased);
         if (!imported) throw new Error("Merged cloud snapshot was rejected");
       }
-      const { error: uploadError } = await client.from("app_state").upsert({ user_id: user.id, data: encodedMerged, updated_at: now }, { onConflict: "user_id" });
-      if (uploadError) throw uploadError;
       saveKnownState(user.id, cloudKnownState(merged));
       initializedUserRef.current = user.id;
       setState("synced");
-      setMessage(initial ? "Данные устройства и облака объединены без удаления записей" : "Все устройства синхронизированы");
+      setMessage("Изменения сохранены в Supabase. Другие устройства получат их при подключении.");
       return true;
     } catch {
-      setState(navigator.onLine ? "error" : "offline");
-      setMessage("Локальные данные не затронуты. Синхронизация повторится при подключении.");
+      if (activeUserRef.current === user.id) {
+        setState(navigator.onLine ? "error" : "offline");
+        setMessage("Не удалось завершить синхронизацию. Повторю при подключении.");
+      }
       return false;
     } finally {
       syncingRef.current = false;
     }
   }, [session]);
 
-  const saveNow = useCallback(() => runSync(false), [runSync]);
+  const saveNow = useCallback(() => runSync(initializedUserRef.current !== session?.user.id), [runSync, session?.user.id]);
 
   useEffect(() => {
     const client = createSupabaseBrowserClient();
     clientRef.current = client;
     if (!client) { queueMicrotask(() => setState("disabled")); return; }
-    client.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = client.auth.onAuthStateChange((_event, next) => setSession(next));
+    client.auth.getSession().then(({ data }) => { activeUserRef.current = data.session?.user.id ?? null; setSession(data.session); });
+    const { data } = client.auth.onAuthStateChange((_event, next) => { activeUserRef.current = next?.user.id ?? null; setSession(next); });
     return () => data.subscription.unsubscribe();
   }, []);
 
@@ -116,7 +114,7 @@ export function useCloudSync({ ready, exportData, importData }: { ready: boolean
     return { ok: true, message: "Вход выполнен. Подключаю облачную копию…" };
   }, []);
 
-  const signOut = useCallback(async () => { await clientRef.current?.auth.signOut(); initializedUserRef.current = null; setSession(null); setState("signed-out"); setMessage(""); }, []);
+  const signOut = useCallback(async () => { activeUserRef.current = null; await clientRef.current?.auth.signOut(); initializedUserRef.current = null; setSession(null); setState("signed-out"); setMessage(""); }, []);
   return { email: session?.user.email ?? null, state, message, authenticate, signOut, saveNow };
 }
 
@@ -133,9 +131,4 @@ function saveKnownState(userId: string, state: CloudKnownState) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function hasUserContent(snapshot: Record<string, unknown>): boolean {
-  const collections = ["entries", "financeTransactions", "savingsGoals", "sharedPlans", "planTransactions", "importantDates", "calendarEvents", "documents", "loyaltyCards", "learnedRules"];
-  return collections.some(key => Array.isArray(snapshot[key]) && snapshot[key].length > 0) || snapshot.draft != null || snapshot.preview != null;
 }

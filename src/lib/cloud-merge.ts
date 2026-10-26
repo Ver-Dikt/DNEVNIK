@@ -68,7 +68,13 @@ export function cloudKnownState(snapshot: JsonRecord): CloudKnownState {
 }
 
 export function sameSnapshotContent(left: JsonRecord, right: JsonRecord): boolean {
-  return JSON.stringify(withoutSyncEnvelope(left)) === JSON.stringify(withoutSyncEnvelope(right));
+  return JSON.stringify(canonical(withoutSyncEnvelope(left))) === JSON.stringify(canonical(withoutSyncEnvelope(right)));
+}
+
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (isRecord(value)) return Object.fromEntries(Object.keys(value).sort().map(key => [key, canonical(value[key])]));
+  return value;
 }
 
 function mergeCollection(local: JsonRecord[], remote: JsonRecord[], deleted: Record<string, string>, localSnapshotTime: string, remoteSnapshotTime: string): JsonRecord[] {

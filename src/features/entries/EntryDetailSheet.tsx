@@ -19,7 +19,8 @@ export function EntryDetailSheet({
   onCreateSpace,
   onClose,
   onDelete,
-  onRemember
+  onRemember,
+  onReparse
 }: {
   entry: DiaryEntry;
   members: Member[];
@@ -31,6 +32,7 @@ export function EntryDetailSheet({
   onClose: () => void;
   onDelete: () => void;
   onRemember: () => void;
+  onReparse?: () => void;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   useModalLayer(panelRef, onClose);
@@ -63,7 +65,7 @@ export function EntryDetailSheet({
             <Textarea value={entry.description ?? ""} onChange={(event) => onChange({ description: event.target.value })} placeholder="Подробности записи" />
           </Field>
           <div className="grid gap-3 sm:grid-cols-2">
-            {showStructure ? (
+            {(
               <Field label="Тип">
                 <Select value={entry.kind} onChange={(event) => onChange({ kind: event.target.value as EntryKind })}>
                   <option value="task">Дело</option>
@@ -73,7 +75,7 @@ export function EntryDetailSheet({
                   <option value="note">Заметка</option>
                 </Select>
               </Field>
-            ) : null}
+            )}
             <Field label="Кому">
               <Select value={entry.assignedTo ?? "me"} onChange={(event) => onChange({ assignedTo: event.target.value as AssignedTo, visibility: event.target.value === "shared" ? "shared" : "private" })}>
                 <option value="me">{memberName(members, "me")}</option>
@@ -247,6 +249,7 @@ export function EntryDetailSheet({
             </div>
           </div> : null}
 
+          {onReparse ? <Button className="font-bold" onClick={onReparse}>Разобрать текст на записи</Button> : null}
           {entry.needsReview ? <Button className="font-bold" onClick={onRemember}>Запомнить исправление для похожих записей</Button> : null}
 
           <div className="dialog-footer flex items-center justify-between gap-2">

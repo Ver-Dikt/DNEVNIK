@@ -63,6 +63,7 @@ export function DnevnikApp() {
   const [captureOpen, setCaptureOpen] = useState(false);
   const [quickText, setQuickText] = useState("");
   const [preview, setPreview] = useState<AIParseResult | null>(null);
+  const [reparseId, setReparseId] = useState<string | null>(null);
   const [editingPreviewIndex, setEditingPreviewIndex] = useState<number | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
@@ -75,6 +76,8 @@ export function DnevnikApp() {
   const [learnedRules, setLearnedRules] = useState<LearnedRule[]>([]);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const keepListeningRef = useRef(false);
+  const parseOnStopRef = useRef(false);
+  const voiceFinishedRef = useRef<(text: string) => void>(() => undefined);
   const latestTextRef = useRef("");
   const voiceBaseRef = useRef("");
   const restoredRef = useRef(false);
@@ -95,6 +98,10 @@ export function DnevnikApp() {
     return imported;
   }, [importDnevnikData]);
   const cloud = useCloudSync({ ready: data.status.ready, exportData: cloudExportData, importData: cloudImportData });
+
+  useEffect(() => {
+    voiceFinishedRef.current = text => { void parseText(text, true); };
+  });
 
   useEffect(() => {
     queueMicrotask(() => setLearnedRules(loadLearnedRules()));
@@ -209,6 +216,7 @@ export function DnevnikApp() {
   }
 
   function closeCapture() {
+    parseOnStopRef.current = false;
     keepListeningRef.current = false;
     recognitionRef.current?.stop();
     setIsListening(false);
@@ -254,10 +262,10 @@ export function DnevnikApp() {
     setDetailId(entry.id);
   }
 
-  async function parseText() {
-    const text = quickText.trim();
+  async function parseText(input = quickText, fromVoice = false) {
+    const text = input.trim();
     if (!text) return;
-    const savings = parseSavingsCommand(text);
+    const savings = reparseId ? null : parseSavingsCommand(text);
     if (savings?.action === "create" && savings.amount) {
       const amount = savings.amount;
       data.setSavingsGoals((current) => [createSavingsGoal(savings.title, amount, data.settings.defaultCurrency), ...current]);
@@ -282,6 +290,7 @@ export function DnevnikApp() {
     setVoiceMessage("Разбираю...");
     try {
       const result = parseSmartInput(text, {
+        now: reparseId ? new Date(data.entries.find(entry => entry.id === reparseId)?.createdAt ?? Date.now()) : undefined,
         timezone: data.settings.timezone,
         learnedRules,
         projects: data.projects,
@@ -296,7 +305,7 @@ export function DnevnikApp() {
       const parsed: AIParseResult = { confidence: result.confidence, items: result.items, rawText: text, needsReview: result.needsReview };
       setPreview(parsed);
       setVoiceMessage(`Найдено ${parsed.items.length} записей. Проверь и сохрани.`);
-      if (data.settings.autoSaveAfterParse && !parsed.needsReview && parsed.confidence >= 0.82) savePreview(parsed);
+      if (!reparseId && (fromVoice || data.settings.autoSaveAfterParse) && !parsed.needsReview && parsed.items.every(item => (item.fieldConfidence?.intent ?? 0) >= 0.75)) savePreview(parsed);
     } catch {
       saveFallback(text);
     } finally {
@@ -339,7 +348,14 @@ export function DnevnikApp() {
     if (!target || savedPreviewsRef.current.has(target)) return;
     savedPreviewsRef.current.add(target);
     const saved = target.items.map((item) => normalizeSavedEntry(createEntryFromParsed(item), data.spaces, data.projects));
-    addEntries(saved);
+    const original = reparseId ? data.entries.find(entry => entry.id === reparseId) : undefined;
+    if (original && saved[0]) {
+      saved[0] = { ...original, ...saved[0], id: original.id, createdAt: original.createdAt, revision: (original.revision ?? 1) + 1 };
+      data.setEntries(current => [...saved, ...current.filter(entry => entry.id !== original.id)]);
+    } else {
+      addEntries(saved);
+    }
+    setReparseId(null);
     setPreview(null);
     setQuickText("");
     setEditingPreviewIndex(null);
@@ -361,6 +377,7 @@ export function DnevnikApp() {
 
   function toggleVoice() {
     if (isListening || recognitionRef.current) {
+      parseOnStopRef.current = true;
       keepListeningRef.current = false;
       recognitionRef.current?.stop();
       setIsListening(false);
@@ -397,7 +414,13 @@ export function DnevnikApp() {
     recognition.onend = () => {
       if (recognitionRef.current !== recognition) return;
       recognitionRef.current = null;
-      if (!keepListeningRef.current) return;
+      if (!keepListeningRef.current) {
+        if (parseOnStopRef.current) {
+          parseOnStopRef.current = false;
+          voiceFinishedRef.current(latestTextRef.current);
+        }
+        return;
+      }
       voiceBaseRef.current = latestTextRef.current.trim();
       window.setTimeout(() => keepListeningRef.current ? startRecognition(Recognition) : undefined, 250);
     };
@@ -538,7 +561,7 @@ export function DnevnikApp() {
         <div className="app-toolbar">
           <div className="global-search"><Search size={19} aria-hidden="true" /><input ref={searchRef} aria-label="Поиск по всем записям" title="Поиск · Ctrl K" placeholder="Найти запись…" value={search} onChange={event => setSearch(event.target.value)} />{search ? <button type="button" aria-label="Очистить поиск" className="icon-control" onClick={() => { setSearch(""); searchRef.current?.focus(); }}><X size={16} /></button> : null}</div>
           <CloudSyncButton email={cloud.email} state={cloud.state} message={cloud.message} onAuthenticate={cloud.authenticate} onSignOut={cloud.signOut} onSync={cloud.saveNow} />
-          <Button onClick={() => setCaptureOpen(true)} variant="primary" aria-label="Быстрый ввод: текст или голос" title="Добавить · Ctrl Enter"><Mic size={19} />Добавить</Button>
+          <Button onClick={() => { setReparseId(null); setCaptureOpen(true); }} variant="primary" aria-label="Быстрый ввод: текст или голос" title="Добавить · Ctrl Enter"><Mic size={19} />Добавить</Button>
         </div>
         {search.trim() ? <Surface className="search-results" aria-label="Результаты поиска"><p className="px-3 py-2 text-sm text-[var(--muted)]">{searchResults.length ? "Найдено: " + searchResults.length : "Ничего не найдено. Попробуйте другое слово."}</p>{searchResults.slice(0, 50).map(entry => <button type="button" className="search-result" key={entry.id} onClick={() => setDetailId(entry.id)}><b>{entry.title}</b><span>{entry.area ?? "Личное"} · {kindLabels[entry.kind] ?? "Запись"}</span></button>)}{searchResults.length > 50 ? <p className="p-3 text-sm text-[var(--muted)]">Показаны первые 50 записей. Уточните поиск.</p> : null}</Surface> : null}
         {data.status.warning ? <Surface className="mb-4 p-3 text-sm text-[#a15c00]">{data.status.warning}</Surface> : null}
@@ -576,7 +599,7 @@ export function DnevnikApp() {
       </div>
 
       <MobileNav active={screen} onChange={navigate} />
-      {captureOpen ? <CaptureSheet text={quickText} isListening={isListening} isParsing={isParsing} preview={preview} voiceMessage={voiceMessage} onClose={closeCapture} onTextChange={setQuickText} onToggleVoice={toggleVoice} onParse={parseText} onSaveAll={() => savePreview()} onEditPreview={setEditingPreviewIndex} onRemovePreview={removePreviewItem} /> : null}
+      {captureOpen ? <CaptureSheet text={quickText} isListening={isListening} isParsing={isParsing} preview={preview} voiceMessage={voiceMessage} onClose={closeCapture} onTextChange={value => { setQuickText(value); setPreview(null); }} onToggleVoice={toggleVoice} onParse={() => void parseText()} onSaveAll={() => savePreview()} onEditPreview={setEditingPreviewIndex} onRemovePreview={removePreviewItem} /> : null}
       {editingPreviewIndex !== null && preview?.items[editingPreviewIndex] ? (
         <EntryDetailSheet
           key={editingPreviewIndex}
@@ -595,7 +618,7 @@ export function DnevnikApp() {
           onRemember={() => undefined}
         />
       ) : null}
-      {selectedEntry ? <EntryDetailSheet key={selectedEntry.id} entry={selectedEntry} members={data.members} projects={data.projects} spaces={data.spaces} onChange={(patch) => updateEntry(selectedEntry.id, patch)} onCreateProject={createProject} onCreateSpace={createSpace} onClose={() => setDetailId(null)} onDelete={() => { deleteEntry(selectedEntry); setDetailId(null); }} onRemember={rememberCurrentEntry} /> : null}
+      {selectedEntry ? <EntryDetailSheet key={selectedEntry.id} entry={selectedEntry} members={data.members} projects={data.projects} spaces={data.spaces} onChange={(patch) => updateEntry(selectedEntry.id, patch)} onCreateProject={createProject} onCreateSpace={createSpace} onClose={() => setDetailId(null)} onDelete={() => { deleteEntry(selectedEntry); setDetailId(null); }} onRemember={rememberCurrentEntry} onReparse={() => { setReparseId(selectedEntry.id); setQuickText(selectedEntry.originalInput ?? selectedEntry.description ?? selectedEntry.sourceText ?? selectedEntry.title); setPreview(null); setDetailId(null); setCaptureOpen(true); setVoiceMessage("Проверьте разбор: после сохранения он заменит выбранную запись. Исходный текст сохранится в описании."); }} /> : null}
       {toast ? <Toast title={toast.title} detail={toast.detail} action={toast.action} actionLabel={toast.actionLabel} /> : null}
     </main>
   );

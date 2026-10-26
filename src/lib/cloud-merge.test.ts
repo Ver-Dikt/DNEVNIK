@@ -6,6 +6,9 @@ const recent = "2026-09-21T10:00:00.000Z";
 const now = "2026-09-22T10:00:00.000Z";
 
 describe("cloud snapshot merge", () => {
+  it("ignores database JSON property ordering", () => {
+    expect(sameSnapshotContent({ entries: [{ id: "a", title: "Дело" }], version: "5" }, { version: "5", entries: [{ title: "Дело", id: "a" }] })).toBe(true);
+  });
   it("never lets an empty computer erase phone records", () => {
     const phone = { version: "5", exportedAt: recent, entries: [{ id: "phone", title: "С телефона", updatedAt: recent }] };
     const computer = { version: "5", exportedAt: now, entries: [] };

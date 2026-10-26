@@ -58,8 +58,8 @@ export function CaptureSheet({
         </div>
         {voiceMessage ? <p role="status" aria-live="polite" className="mt-2 text-sm text-[var(--muted)]">{voiceMessage}</p> : null}
 
-        <p className="mt-2 text-xs text-[var(--muted)]">Черновик восстанавливается при повторном открытии. Остановите микрофон перед разбором.</p>
-        <details className="mt-3 text-sm text-[var(--muted)]"><summary className="cursor-pointer py-2">Как точнее распределять записи</summary><p className="mt-2">«В хотелки кресло», «В дела позвонить мастеру», «По работе сделать дизайн», «Купить краску для дома». Несколько записей можно вводить с новой строки. Надиктованный текст можно поправить после остановки микрофона.</p></details>
+        <p className="mt-2 text-xs text-[var(--muted)]">После остановки микрофона текст разбирается автоматически. Понятные записи сохраняются сразу, остальные остаются здесь для проверки. Черновик восстанавливается при повторном открытии.</p>
+        <details className="mt-3 text-sm text-[var(--muted)]"><summary className="cursor-pointer py-2">Как точнее распределять записи</summary><p className="mt-2">«В покупки молоко», «В дела позвонить мастеру», «В идеи подсветка», «В заметки размеры стола», «В хотелки кресло». Между пунктами скажите «новая запись» или вводите их с новой строки.</p></details>
         {preview ? (
           <div className="mt-5 grid gap-3">
             <div className="flex items-center justify-between">

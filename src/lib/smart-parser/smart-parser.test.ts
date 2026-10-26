@@ -340,6 +340,27 @@ describe("parseSmartInput", () => {
 });
 
 describe("voice capture regressions", () => {
+  it.each([
+    ["В покупки молоко", "purchase", "Купить молоко"],
+    ["В заметки размеры стола 120 на 60", "note", "Размеры стола 120 на 60"],
+    ["В идеи сделать подсветку", "idea", "Сделать подсветку"],
+    ["В дела оплатить интернет", "task", "Оплатить интернет"]
+  ] as const)("understands voice category %s", (text, kind, title) => {
+    const result = parseSmartInput(text, ctx);
+    expect(result.items[0].kind).toBe(kind);
+    expect(result.items[0].title).toBe(title);
+  });
+
+  it("keeps a shopping sentence separate from the next dictated task", () => {
+    const result = parseSmartInput("Купить молоко\nПозвонить маме", ctx);
+    expect(result.items.map(item => item.kind)).toEqual(["purchase", "task"]);
+  });
+
+  it("understands spoken entry boundaries", () => {
+    const result = parseSmartInput("В дела позвонить маме новая запись в покупки молоко следующая запись в заметки размеры стола", ctx);
+    expect(result.items.map(item => item.kind)).toEqual(["task", "purchase", "note"]);
+  });
+
   it("keeps the complete dictation in every parsed entry description", () => {
     const text = "Добавить голосовой ввод: разрешить доступ, проверить запись и сохранить результат.";
     const items = parseSmartInput(text, ctx).items;
