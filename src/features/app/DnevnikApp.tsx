@@ -217,6 +217,12 @@ export function DnevnikApp() {
 
   function closeCapture() {
     parseOnStopRef.current = false;
+    if (reparseId) {
+      setReparseId(null);
+      setQuickText("");
+      setPreview(null);
+      setEditingPreviewIndex(null);
+    }
     keepListeningRef.current = false;
     recognitionRef.current?.stop();
     setIsListening(false);
