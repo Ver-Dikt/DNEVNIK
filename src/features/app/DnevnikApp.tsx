@@ -8,7 +8,9 @@ import { DesktopNav, MobileNav } from "@/components/navigation/AppNav";
 import { Button, Surface } from "@/components/ui/native";
 import { kindLabels } from "@/features/shared/entry-utils";
 import { CaptureSheet } from "@/features/capture/CaptureSheet";
+import { LocalAssistant } from "@/features/assistant/LocalAssistant";
 import { EntryDetailSheet } from "@/features/entries/EntryDetailSheet";
+import { EntryCard } from "@/features/entries/EntryCard";
 import { IdeasView, MoneyView, SettingsView, TasksView, UsView, WorkView } from "@/features/app/DirectViews";
 import { DocumentsHubView } from "@/features/family/FamilyViews";
 import { PlanView } from "@/features/planner/PlanView";
@@ -571,8 +573,9 @@ export function DnevnikApp() {
         </div>
         {search.trim() ? <Surface className="search-results" aria-label="Результаты поиска"><p className="px-3 py-2 text-sm text-[var(--muted)]">{searchResults.length ? "Найдено: " + searchResults.length : "Ничего не найдено. Попробуйте другое слово."}</p>{searchResults.slice(0, 50).map(entry => <button type="button" className="search-result" key={entry.id} onClick={() => setDetailId(entry.id)}><b>{entry.title}</b><span>{entry.area ?? "Личное"} · {kindLabels[entry.kind] ?? "Запись"}</span></button>)}{searchResults.length > 50 ? <p className="p-3 text-sm text-[var(--muted)]">Показаны первые 50 записей. Уточните поиск.</p> : null}</Surface> : null}
         {data.status.warning ? <Surface className="mb-4 p-3 text-sm text-[#a15c00]">{data.status.warning}</Surface> : null}
+        <LocalAssistant entries={data.entries} onProposal={proposal => { setReparseId(null); setQuickText(proposal.rawText); setPreview(proposal); setCaptureOpen(true); }} />
         {screen === "plan" ? (
-          <PlanView calendarEvents={data.calendarEvents} entries={data.entries} importantDates={data.importantDates} members={data.members} planTransactions={data.planTransactions} sharedPlans={data.sharedPlans} spaces={data.spaces} ownerFilter={ownerFilter} mode={planMode} selectedDate={selectedDate} onModeChange={setMode} onDateChange={setSelectedDate} onOwnerFilterChange={setOwnerFilter} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} onAdd={() => setCaptureOpen(true)} />
+          <PlanView calendarEvents={data.calendarEvents} entries={data.entries} importantDates={data.importantDates} members={data.members} planTransactions={data.planTransactions} sharedPlans={data.sharedPlans} spaces={data.spaces} ownerFilter={ownerFilter} mode={planMode} selectedDate={selectedDate} onModeChange={setMode} onDateChange={setSelectedDate} onOwnerFilterChange={setOwnerFilter} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} onAdd={() => createManualEntry("task", { dueDate: selectedDate, schedule: "today", assignedTo: ownerFilter, visibility: ownerFilter === "shared" ? "shared" : "private" })} />
         ) : null}
         {screen === "us" ? (
           <UsView calendarEvents={data.calendarEvents} entries={data.entries} importantDates={data.importantDates} members={data.members} sharedPlans={data.sharedPlans} spaces={data.spaces} onOpenEntry={(entry) => setDetailId(entry.id)} onComplete={completeEntry} onNavigate={navigate} />
@@ -580,7 +583,7 @@ export function DnevnikApp() {
         {screen === "tasks" ? (
           <TasksView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={(assignedTo = "me") => createManualEntry("task", { assignedTo, visibility: assignedTo === "shared" ? "shared" : "private" })} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
-        {screen === "school" ? <SchoolView /> : null}
+        {screen === "school" ? <><SchoolView /><section className="grid gap-3 mt-5"><div className="flex items-center justify-between gap-3"><h2 className="text-lg font-black">Школьные записи</h2><Button onClick={() => createManualEntry("note", { area: "Школа", projectPath: ["Школа"] })}>Добавить</Button></div>{data.entries.filter(entry => entry.area === "Школа").map(entry => <EntryCard key={entry.id} entry={entry} spaces={data.spaces} onOpen={() => setDetailId(entry.id)} onComplete={() => completeEntry(entry)} />)}<p className="text-sm text-[var(--muted)]">Можно надиктовать: «По школе надо подготовить проект» — запись появится здесь.</p></section></> : null}
         {screen === "work" ? (
           <WorkView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={() => createManualEntry("task", { area: "Работа", projectPath: ["Работа"], domain: "work" })} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}

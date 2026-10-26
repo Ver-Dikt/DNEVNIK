@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Gift, Plus } from "lucide-react";
+import { ExternalLink, Gift, Link2, Plus } from "lucide-react";
 import { normalizeWebLink } from "@/lib/web-link";
 import { useRef, useState } from "react";
 import { Badge, Button, Field, Input, Segmented, Select, Surface } from "@/components/ui/native";
@@ -190,8 +190,7 @@ export function WishlistView({
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {wishes.map((entry) => (
           <Surface className="overflow-hidden p-0" key={entry.id}>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            {entry.wish?.imageUrl ? <img alt="" className="h-40 w-full object-cover" src={entry.wish.imageUrl} /> : <div className="h-32 bg-[var(--surface-soft)]" />}
+            <WishCover key={entry.wish?.imageUrl ?? entry.id} entry={entry} />
             <div className="grid gap-3 p-4">
               <div className="flex items-start justify-between gap-2">
                 <button className="min-w-0 text-left" onClick={() => onOpen(entry)} type="button">
@@ -222,6 +221,17 @@ export function WishlistView({
       {mode === "plans" && !plans.length && !wishes.length ? <Surface className="empty-state p-6 text-center text-sm text-[var(--muted)]"><div className="empty-icon"><Gift size={62} /></div><h2>Планов пока нет</h2><p>Создайте план для себя, партнёра или общий.</p><Button className="empty-cta" variant="primary" onClick={createPlan}>Создать план</Button></Surface> : null}
     </div>
   );
+}
+
+function WishCover({ entry }: { entry: DiaryEntry }) {
+  const [failed, setFailed] = useState(false);
+  const image = normalizeWebLink(entry.wish?.imageUrl);
+  const url = normalizeWebLink(entry.url ?? entry.wish?.url);
+  if (image && !failed) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img alt={entry.title} className="h-44 w-full object-contain bg-[var(--surface-soft)]" loading="lazy" referrerPolicy="no-referrer" src={image} onError={() => setFailed(true)} />;
+  }
+  return <div className="wish-link-placeholder"><Link2 size={30} /><b>{url ? domainFromUrl(url) : "Хотелка"}</b><span>{url ? "Товар можно посмотреть на сайте магазина" : "Откройте запись, чтобы добавить ссылку"}</span></div>;
 }
 
 function PlanCard({ plan, plans, transactions, onChangePlans, onChangeTransactions }: { plan: SharedPlan; plans: SharedPlan[]; transactions: PlanTransaction[]; onChangePlans: (next: SharedPlan[] | ((current: SharedPlan[]) => SharedPlan[])) => void; onChangeTransactions: (next: PlanTransaction[] | ((current: PlanTransaction[]) => PlanTransaction[])) => void }) {

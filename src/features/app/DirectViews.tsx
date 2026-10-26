@@ -1,9 +1,9 @@
 "use client";
 
 import { useModalLayer } from "@/hooks/use-modal-layer";
-import { relationshipDays, upcomingImportantDate } from "@/lib/important-dates";
+import { nextOccurrence, pluralRu, relationshipDays, relationshipMilestones, upcomingImportantDate } from "@/lib/important-dates";
 import { todayIso } from "@/lib/dates";
-import { CalendarHeart, CheckCircle2, ChevronRight, GraduationCap, Plus, X } from "lucide-react";
+import { CalendarHeart, CheckCircle2, ChevronRight, Gift, GraduationCap, Heart, Plus, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { Button, Field, Input, Segmented, Surface } from "@/components/ui/native";
 import { EntryCard } from "@/features/entries/EntryCard";
@@ -11,7 +11,7 @@ import { calculateBudget } from "@/lib/finance";
 import { purchaseStatusGroup, wishStatus } from "@/features/shared/entry-utils";
 import type { AppSettings, AssignedTo, CalendarEvent, DiaryEntry, ImportantDate, LoyaltyCard, Member, SharedPlan, Space } from "@/lib/types";
 
-export function UsView({ calendarEvents, entries, importantDates, sharedPlans, spaces, onOpenEntry, onComplete, onNavigate }: { calendarEvents: CalendarEvent[]; entries: DiaryEntry[]; importantDates: ImportantDate[]; members: Member[]; sharedPlans: SharedPlan[]; spaces: Space[]; onOpenEntry: (entry: DiaryEntry) => void; onComplete: (entry: DiaryEntry) => void; onNavigate: (screen: import("@/features/app/types").ScreenId) => void }) {
+export function UsView({ calendarEvents, entries, importantDates, members, sharedPlans, spaces, onOpenEntry, onComplete, onNavigate }: { calendarEvents: CalendarEvent[]; entries: DiaryEntry[]; importantDates: ImportantDate[]; members: Member[]; sharedPlans: SharedPlan[]; spaces: Space[]; onOpenEntry: (entry: DiaryEntry) => void; onComplete: (entry: DiaryEntry) => void; onNavigate: (screen: import("@/features/app/types").ScreenId) => void }) {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const sharedEntries = entries.filter((entry) => entry.assignedTo === "shared" || entry.visibility === "shared");
   const sharedTasks = sharedEntries.filter((entry) => entry.kind === "task" && entry.status !== "done" && entry.status !== "bought" && entry.status !== "cancelled");
@@ -21,7 +21,6 @@ export function UsView({ calendarEvents, entries, importantDates, sharedPlans, s
   const today = todayIso();
   const todayEntries = sharedEntries.filter((entry) => entry.dueDate === today && entry.status !== "done" && entry.status !== "bought" && entry.status !== "cancelled").slice(0, 3);
   const nextDate = upcomingImportantDate(importantDates, today);
-  const relationship = relationshipDays(importantDates.find(item => item.title === "Вместе с")?.date, today);
   const upcomingEntries = sharedEntries.filter((entry) => entry.dueDate && entry.dueDate >= today && entry.status !== "done" && entry.status !== "bought" && entry.status !== "cancelled").sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? "")).slice(0, 3);
   const important = sharedEntries.filter((entry) => entry.priority === "high" && entry.status !== "done" && entry.status !== "bought" && entry.status !== "cancelled").slice(0, 3);
   return (
@@ -31,17 +30,14 @@ export function UsView({ calendarEvents, entries, importantDates, sharedPlans, s
           <p className="screen-eyebrow">Общее пространство</p>
           <h1 className="screen-title">Мы</h1>
         </div>
-        <div className="couple-mini-stats">
-          <Surface className="couple-stat-card"><b>{relationship.together ?? "—"}</b><span>дней вместе</span></Surface>
-          <Surface className="couple-stat-card accent"><b>{relationship.anniversary ?? "—"}</b><span>до годовщины</span></Surface>
-        </div>
+        <span className="page-symbol"><Heart size={25} /></span>
       </div>
+      <RelationshipOverview dates={importantDates} members={members} today={today} onSetup={() => onNavigate("settings")} />
       <button className="school-quick-link" type="button" onClick={() => onNavigate("school")} aria-label="Открыть раздел Школа">
         <span className="school-quick-icon" aria-hidden="true"><GraduationCap size={22} /></span>
         <span><b>Школа</b><small>Расписание и что взять с собой</small></span>
         <ChevronRight size={20} aria-hidden="true" />
       </button>
-      {relationship.together === null ? <button className="date-setup" type="button" onClick={() => onNavigate("settings")}>Указать дату знакомства или начала отношений →</button> : null}
       <Surface className="summary-panel p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -68,6 +64,26 @@ export function UsView({ calendarEvents, entries, importantDates, sharedPlans, s
       {summaryOpen ? <SharedSummarySheet entries={sharedEntries} plans={activePlans} spaces={spaces} onClose={() => setSummaryOpen(false)} onOpenEntry={entry => { setSummaryOpen(false); onOpenEntry(entry); }} /> : null}
     </div>
   );
+}
+
+function RelationshipOverview({ dates, members, today, onSetup }: { dates: ImportantDate[]; members: Member[]; today: string; onSetup: () => void }) {
+  const start = dates.find(item => item.title === "Вместе с")?.date;
+  const relationship = relationshipDays(start, today);
+  const milestones = relationshipMilestones(start, today);
+  const personalDates = [
+    ...dates.filter(item => item.title !== "Вместе с" && (item.type === "birthday" || item.type === "anniversary")),
+    ...members.filter(member => member.birthday && !dates.some(item => item.type === "birthday" && item.date === member.birthday)).map(member => ({ id: `birthday-${member.id}`, title: `День рождения · ${member.name}`, date: member.birthday!, repeat: "yearly" as const }))
+  ].map(item => ({ ...item, occurrence: nextOccurrence(item, today) })).filter(item => item.occurrence).sort((a, b) => a.occurrence!.localeCompare(b.occurrence!)).slice(0, 3);
+  const dateLabel = (date: string) => new Date(`${date}T12:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+  return <Surface className="relationship-card">
+    <div className="relationship-top"><span><Heart size={16} />Наша история</span><button type="button" onClick={onSetup} aria-label="Настроить наши даты">Настроить<ChevronRight size={16} /></button></div>
+    {milestones && start ? <>
+      <h2>{milestones.months} {pluralRu(milestones.months, ["месяц", "месяца", "месяцев"])}{milestones.days ? ` и ${milestones.days} ${pluralRu(milestones.days, ["день", "дня", "дней"])}` : ""}<span>вместе</span></h2>
+      <p className="relationship-since">С {dateLabel(start)} · {relationship.together} {pluralRu(relationship.together!, ["день", "дня", "дней"])}</p>
+      <div className="relationship-milestones"><div><CalendarHeart size={20} /><span>Ближайший месяц вместе</span><b>{dateLabel(milestones.nextMonthlyDate)}</b></div><div><Gift size={20} /><span>Годовщина · через {relationship.anniversary} {pluralRu(relationship.anniversary ?? 0, ["день", "дня", "дней"])}</span><b>{milestones.anniversaryDate ? dateLabel(milestones.anniversaryDate) : "—"}</b></div></div>
+    </> : <div className="relationship-setup"><h2>У каждой истории есть начало</h2><p>Укажите дату отношений — здесь появятся месяцы вместе и ближайшая годовщина.</p><Button onClick={onSetup} variant="primary">Указать дату</Button></div>}
+    {personalDates.length ? <div className="relationship-dates">{personalDates.map(item => <div key={item.id}><span>{item.title}</span><b>{dateLabel(item.occurrence!)}</b></div>)}</div> : null}
+  </Surface>;
 }
 
 function SharedSummarySheet({ entries, plans, spaces, onClose, onOpenEntry }: { entries: DiaryEntry[]; plans: SharedPlan[]; spaces: Space[]; onClose: () => void; onOpenEntry: (entry: DiaryEntry) => void }) {

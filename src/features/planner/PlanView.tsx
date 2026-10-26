@@ -1,265 +1,74 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import { useMemo, useRef } from "react";
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import { useRef, useState } from "react";
 import { Button, Segmented, Surface } from "@/components/ui/native";
 import { EntryCard } from "@/features/entries/EntryCard";
-import { calculateSharedPlan, money as formatMoney } from "@/features/family/shared-plan-utils";
-import { addDays, addMonths, formatHeaderDate, getMonthGrid, getWeekDays, isPast, isToday, sameMonth, shortWeekday } from "@/features/shared/date-utils";
+import { useModalLayer } from "@/hooks/use-modal-layer";
+import { addDays, addMonths, formatHeaderDate, formatMonth, getMonthGrid, getWeekDays, isToday, sameMonth, shortWeekday } from "@/features/shared/date-utils";
 import { matchesOwner } from "@/features/shared/entry-utils";
+import { nextOccurrence } from "@/lib/important-dates";
+import { todayIso } from "@/lib/dates";
 import type { CalendarEvent, DiaryEntry, ImportantDate, Member, PlanTransaction, SharedPlan, Space } from "@/lib/types";
 
-export function PlanView({
-  entries,
-  calendarEvents,
-  importantDates,
-  members,
-  planTransactions,
-  sharedPlans,
-  spaces,
-  ownerFilter,
-  mode,
-  selectedDate,
-  onModeChange,
-  onDateChange,
-  onOwnerFilterChange,
-  onComplete,
-  onOpen,
-  onAdd
-}: {
-  entries: DiaryEntry[];
-  calendarEvents: CalendarEvent[];
-  importantDates: ImportantDate[];
-  members: Member[];
-  planTransactions: PlanTransaction[];
-  sharedPlans: SharedPlan[];
-  spaces: Space[];
-  ownerFilter: "me" | "partner" | "shared";
-  mode: "day" | "week" | "month";
-  selectedDate: string;
-  onModeChange: (mode: "day" | "week" | "month") => void;
-  onDateChange: (date: string) => void;
+type Props = {
+  entries: DiaryEntry[]; calendarEvents: CalendarEvent[]; importantDates: ImportantDate[];
+  members: Member[]; planTransactions: PlanTransaction[]; sharedPlans: SharedPlan[]; spaces: Space[];
+  ownerFilter: "me" | "partner" | "shared"; mode: "day" | "week" | "month"; selectedDate: string;
+  onModeChange: (mode: "day" | "week" | "month") => void; onDateChange: (date: string) => void;
   onOwnerFilterChange: (filter: "me" | "partner" | "shared") => void;
-  onComplete: (entry: DiaryEntry) => void;
-  onOpen: (entry: DiaryEntry) => void;
-  onAdd: () => void;
-}) {
+  onComplete: (entry: DiaryEntry) => void; onOpen: (entry: DiaryEntry) => void; onAdd: () => void;
+};
+
+export function PlanView(props: Props) {
+  const { entries, calendarEvents, importantDates, members, spaces, ownerFilter, mode, selectedDate, onModeChange, onDateChange, onOwnerFilterChange, onComplete, onOpen, onAdd } = props;
+  const [openedDate, setOpenedDate] = useState<string | null>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
-  const activeEntries = entries.filter((entry) => entry.status !== "cancelled" && entry.status !== "done" && matchesOwner(entry, ownerFilter));
-  const weekDays = getWeekDays(selectedDate);
-  const monthDays = getMonthGrid(selectedDate);
-  const entriesByDate = useMemo(() => {
-    const map = new Map<string, DiaryEntry[]>();
-    for (const entry of activeEntries) {
-      if (!entry.dueDate) continue;
-      map.set(entry.dueDate, [...(map.get(entry.dueDate) ?? []), entry]);
-    }
-    return map;
-  }, [activeEntries]);
-  const markersByDate = useMemo(() => {
-    const map = new Map<string, number>();
-    const days = mode === "month" ? monthDays : weekDays;
-    for (const date of days) {
-      const count = importantDates.filter((item) => importantDateOccursOn(item, date)).length + calendarEvents.filter((event) => eventOccursOn(event, date)).length;
-      if (count) map.set(date, count);
-    }
-    return map;
-  }, [calendarEvents, importantDates, mode, monthDays, weekDays]);
+  const active = entries.filter(entry => !["done", "bought", "cancelled"].includes(entry.status) && matchesOwner(entry, ownerFilter));
+  const belongs = (item: ImportantDate | CalendarEvent) => item.visibility === "shared" ? ownerFilter === "shared" : ownerFilter !== "shared" && item.createdBy === (ownerFilter === "partner" ? "partner" : "me");
+  const birthdays: ImportantDate[] = members.filter(member => member.birthday && !importantDates.some(item => item.type === "birthday" && item.date === member.birthday)).map(member => ({ id: `member-birthday-${member.id}`, title: `День рождения · ${member.name}`, date: member.birthday!, type: "birthday", repeat: "yearly", createdBy: "me", visibility: "shared", revision: 1, createdAt: member.createdAt, updatedAt: member.updatedAt ?? member.createdAt }));
+  const dates = [...importantDates, ...birthdays].filter(belongs);
+  const events = calendarEvents.filter(belongs);
+  const entriesOn = (date: string) => active.filter(entry => entry.dueDate === date).sort((a, b) => (a.time ?? "99:99").localeCompare(b.time ?? "99:99"));
+  const datesOn = (date: string) => dates.filter(item => nextOccurrence(item, date) === date);
+  const eventsOn = (date: string) => events.filter(event => event.startDate <= date && date <= (event.endDate ?? event.startDate));
+  const countOn = (date: string) => entriesOn(date).length + datesOn(date).length + eventsOn(date).length;
+  const days = mode === "month" ? getMonthGrid(selectedDate) : getWeekDays(selectedDate);
+  function shift(direction: number) { onDateChange(mode === "month" ? addMonths(selectedDate, direction) : addDays(selectedDate, direction * (mode === "week" ? 7 : 1))); }
+  function openDate(date: string) { onDateChange(date); setOpenedDate(date); }
 
-  const dated = activeEntries.filter((entry) => entry.dueDate === selectedDate).sort((a, b) => (a.time ?? "99:99").localeCompare(b.time ?? "99:99"));
-  const timed = dated.filter((entry) => entry.time);
-  const untimed = dated.filter((entry) => !entry.time);
-  const purchases = dated.filter((entry) => entry.kind === "purchase");
-  const neededPurchases = activeEntries.filter((entry) => entry.kind === "purchase").slice(0, 12);
-  const importantToday = importantDates.filter((item) => importantDateOccursOn(item, selectedDate));
-  const eventsToday = calendarEvents.filter((event) => eventOccursOn(event, selectedDate));
-  const nextImportantDate = nextDate(importantDates, selectedDate);
-  const activeSharedPlan = sharedPlans.find((plan) => plan.status === "active");
-  const overdue = activeEntries.filter((entry) => isPast(entry.dueDate));
-  const unscheduled = activeEntries.filter((entry) => !entry.dueDate && entry.schedule === "none");
-  const someday = activeEntries.filter((entry) => entry.schedule === "someday");
-  const scheduledLater = activeEntries.filter((entry) => !entry.dueDate && entry.schedule !== "none" && entry.schedule !== "someday");
-
-  function shift(direction: number) {
-    if (mode === "month") {
-      onDateChange(addMonths(selectedDate, direction));
-      return;
-    }
-    onDateChange(addDays(selectedDate, mode === "week" ? direction * 7 : direction));
-  }
-
-  function handleTouchEnd(clientX: number, clientY: number) {
-    if (touchStart.current === null) return;
-    const delta = clientX - touchStart.current.x;
-    const verticalDelta = clientY - touchStart.current.y;
-    touchStart.current = null;
-    if (Math.abs(delta) < 54) return;
-    if (Math.abs(verticalDelta) > Math.abs(delta) * 0.65) return;
-    shift(delta > 0 ? -1 : 1);
-  }
-
-  return (
-    <div className="grid gap-4">
-      <div className="screen-header">
-        <div>
-          <p className="screen-eyebrow">{formatHeaderDate(selectedDate)}</p>
-          <h1 className="screen-title">{monthTitle(selectedDate)}</h1>
+  return <div className="calendar-view">
+    <div className="screen-header"><div><p className="screen-eyebrow">Время для важного</p><h1 className="screen-title">Календарь</h1></div><button aria-label="Добавить событие" className="icon-control" onClick={onAdd} type="button"><Plus size={23} /></button></div>
+    <Segmented value={ownerFilter} onChange={onOwnerFilterChange} options={[{ label: "Моё", value: "me" }, { label: "Партнёра", value: "partner" }, { label: "Общее", value: "shared" }]} />
+    <Surface className="calendar-panel" onTouchStart={event => { touchStart.current = { x: event.touches[0].clientX, y: event.touches[0].clientY }; }} onTouchEnd={event => {
+      const start = touchStart.current; touchStart.current = null;
+      if (!start) return;
+      const dx = event.changedTouches[0].clientX - start.x, dy = event.changedTouches[0].clientY - start.y;
+      if (Math.abs(dx) > 64 && Math.abs(dy) < Math.abs(dx) / 2) shift(dx > 0 ? -1 : 1);
+    }}>
+      <div className="calendar-mode"><Segmented options={[{ label: "День", value: "day" }, { label: "Неделя", value: "week" }, { label: "Месяц", value: "month" }]} value={mode} onChange={onModeChange} /></div>
+      <div className="calendar-period"><Button aria-label="Предыдущий период" onClick={() => shift(-1)}><ChevronLeft size={19} /></Button><h2>{mode === "day" ? formatHeaderDate(selectedDate) : mode === "week" ? `${days[0].slice(8)}–${days[6].slice(8)} · ${formatMonth(selectedDate)}` : formatMonth(selectedDate)}</h2><Button aria-label="Следующий период" onClick={() => shift(1)}><ChevronRight size={19} /></Button></div>
+      {mode === "day" ? <div className="calendar-focus-day"><CalendarDays size={27} /><span>{shortWeekday(selectedDate)}</span><strong>{Number(selectedDate.slice(8))}</strong><p>{countOn(selectedDate) ? `На эту дату: ${countOn(selectedDate)}` : "Свободный день"}</p><Button variant="primary" onClick={() => openDate(selectedDate)}>Открыть день</Button><label>Выбрать дату<input className="input" type="date" aria-label="Выбрать дату" value={selectedDate} onChange={event => { if (event.target.value) onDateChange(event.target.value); }} /></label></div> : <>
+        <div className="calendar-week-labels">{["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"].map(day => <span key={day}>{day}</span>)}</div>
+        <div className={`calendar-grid is-${mode}`} aria-label={mode === "week" ? "Сетка недели" : "Сетка месяца"}>
+          {days.map(date => <button type="button" key={date} aria-label={`${formatHeaderDate(date)} — ${countOn(date) ? `записей: ${countOn(date)}` : "нет записей"}`} aria-current={isToday(date) ? "date" : undefined} aria-pressed={date === selectedDate} className={`calendar-cell ${date === selectedDate ? "is-selected" : ""} ${isToday(date) ? "is-today" : ""} ${!sameMonth(date, selectedDate) ? "is-outside" : ""}`} onClick={() => openDate(date)}><span>{Number(date.slice(8))}</span><i aria-hidden="true" className={`calendar-dot ${countOn(date) ? "" : "empty"}`} />{mode === "week" ? <small>{countOn(date) || "—"}</small> : null}</button>)}
         </div>
-        <button aria-label="Добавить событие" className="icon-add-button button button-plain" onClick={onAdd} type="button"><Plus size={30} /></button>
-      </div>
-      <Segmented
-        onChange={onOwnerFilterChange}
-        options={[
-          { label: "Моё", value: "me" },
-          { label: "Партнёра", value: "partner" },
-          { label: "Общее", value: "shared" }
-        ]}
-        value={ownerFilter}
-      />
-
-      <SummaryStrip
-        activePlan={activeSharedPlan}
-        importantDate={nextImportantDate}
-        planTransactions={planTransactions}
-        purchasesCount={neededPurchases.length}
-        selectedDate={selectedDate}
-        sharedPlans={sharedPlans}
-      />
-
-      <Surface className="grid gap-3 p-3" onTouchStart={(event) => (touchStart.current = { x: event.touches[0].clientX, y: event.touches[0].clientY })} onTouchEnd={(event) => handleTouchEnd(event.changedTouches[0].clientX, event.changedTouches[0].clientY)}>
-        <div className="calendar-toolbar flex items-center justify-between gap-2">
-          <Button aria-label="Назад" className="h-11 w-11 p-0" onClick={() => shift(-1)}><ChevronLeft size={20} /></Button>
-          <Segmented
-            options={[
-              { label: "День", value: "day" },
-              { label: "Неделя", value: "week" },
-              { label: "Месяц", value: "month" }
-            ]}
-            value={mode}
-            onChange={onModeChange}
-          />
-          <Button aria-label="Вперёд" className="h-11 w-11 p-0" onClick={() => shift(1)}><ChevronRight size={20} /></Button>
-        </div>
-        {mode === "month" ? (
-          <div>
-            <div className="month-weekdays mb-2 grid grid-cols-7">
-              {["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"].map((day) => <span key={day}>{day}</span>)}
-            </div>
-            <div className="month-grid grid grid-cols-7 gap-1">
-              {monthDays.map((date) => <CalendarDay count={(entriesByDate.get(date)?.length ?? 0) + (markersByDate.get(date) ?? 0)} date={date} faded={!sameMonth(date, selectedDate)} key={date} selected={date === selectedDate} onClick={() => { onDateChange(date); onModeChange("day"); }} />)}
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-7 gap-1">
-            {weekDays.map((date) => <CalendarDay count={(entriesByDate.get(date)?.length ?? 0) + (markersByDate.get(date) ?? 0)} date={date} key={date} selected={date === selectedDate} onClick={() => onDateChange(date)} />)}
-          </div>
-        )}
-      </Surface>
-
-      <CalendarMarkers dates={importantToday} events={eventsToday} />
-      <AgendaSection title="По времени" entries={timed} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} />
-      <AgendaSection title="Без времени" entries={untimed} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} emptyAction={onAdd} />
-      <AgendaSection title="Покупки на дату" entries={purchases} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} />
-      <AgendaSection title="Просрочено" entries={overdue} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} />
-      <AgendaSection title="Со сроком без даты" entries={scheduledLater} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} />
-      <AgendaSection title="Без даты" entries={unscheduled} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} />
-      <AgendaSection title="Когда-нибудь" entries={someday} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} />
-    </div>
-  );
+      </>}
+      <div className="calendar-footer"><span><i className="calendar-dot" /> Есть дела или события</span><Button onClick={() => onDateChange(todayIso())}>Сегодня</Button></div>
+    </Surface>
+    <p className="calendar-hint">Нажмите на дату, чтобы увидеть её дела. Записи без даты остаются в своих разделах.</p>
+    {openedDate ? <DaySheet date={openedDate} entries={entriesOn(openedDate)} dates={datesOn(openedDate)} events={eventsOn(openedDate)} members={members} spaces={spaces} onClose={() => setOpenedDate(null)} onComplete={onComplete} onOpen={entry => { setOpenedDate(null); onOpen(entry); }} onAdd={() => { setOpenedDate(null); onAdd(); }} /> : null}
+  </div>;
 }
 
-function SummaryStrip({ activePlan, importantDate, planTransactions, purchasesCount, selectedDate, sharedPlans }: { activePlan?: SharedPlan; importantDate?: ImportantDate; planTransactions: PlanTransaction[]; purchasesCount: number; selectedDate: string; sharedPlans: SharedPlan[] }) {
-  const planStats = activePlan ? calculateSharedPlan(sharedPlans, planTransactions, activePlan.id) : null;
-  return (
-    <div className="summary-strip">
-      <Surface className="summary-card">
-        <span>Ближайшая дата</span>
-        <b>{importantDate ? importantDate.title : "Пока нет"}</b>
-        <small>{importantDate ? readableDate(importantDate, selectedDate) : "Добавь в разделе Мы"}</small>
-      </Surface>
-      <Surface className="summary-card">
-        <span>Общий план</span>
-        <b>{activePlan ? activePlan.title : "Нет активного"}</b>
-        <small>{activePlan && planStats ? `${formatMoney(planStats.saved, activePlan.currency ?? "RUB")} накоплено` : "Открой Планы"}</small>
-      </Surface>
-      <Surface className="summary-card">
-        <span>Покупки</span>
-        <b>{purchasesCount ? `${purchasesCount} в работе` : "Чисто"}</b>
-        <small>{purchasesCount ? "Покупки и хотелки разделены" : "Новых покупок нет"}</small>
-      </Surface>
-    </div>
-  );
-}
-
-function CalendarMarkers({ dates, events }: { dates: ImportantDate[]; events: CalendarEvent[] }) {
-  if (!dates.length && !events.length) return null;
-  return (
-    <section className="grid gap-2">
-      <div className="flex items-center justify-between px-1">
-        <h2 className="text-base font-black">События и даты</h2>
-        <span className="text-sm font-bold text-[var(--muted)]">{dates.length + events.length}</span>
-      </div>
-      {dates.map((item) => <Surface className="p-4" key={item.id}><div className="font-black">{item.title}</div><div className="text-sm text-[var(--muted)]">{item.type === "birthday" ? "День рождения" : item.type === "anniversary" ? "Годовщина" : "Важная дата"} · {item.repeat === "yearly" ? "ежегодно" : item.date}</div></Surface>)}
-      {events.map((item) => <Surface className="p-4" key={item.id}><div className="font-black">{item.title}</div><div className="text-sm text-[var(--muted)]">{item.startDate}{item.endDate ? ` - ${item.endDate}` : ""}</div></Surface>)}
-    </section>
-  );
-}
-
-function importantDateOccursOn(item: ImportantDate, date: string) {
-  return item.repeat === "yearly" ? item.date.slice(5) === date.slice(5) : item.date === date;
-}
-
-function eventOccursOn(event: CalendarEvent, date: string) {
-  if (!event.endDate) return event.startDate === date;
-  return event.startDate <= date && date <= event.endDate;
-}
-
-function nextDate(dates: ImportantDate[], selectedDate: string) {
-  return [...dates].sort((a, b) => nextOccurrence(a, selectedDate).localeCompare(nextOccurrence(b, selectedDate)))[0];
-}
-
-function nextOccurrence(item: ImportantDate, fromDate: string) {
-  if (item.repeat === "none") return item.date;
-  const year = Number(fromDate.slice(0, 4));
-  const candidate = `${year}-${item.date.slice(5)}`;
-  return candidate >= fromDate ? candidate : `${year + 1}-${item.date.slice(5)}`;
-}
-
-function readableDate(item: ImportantDate, selectedDate: string) {
-  const occurrence = nextOccurrence(item, selectedDate);
-  return item.repeat === "yearly" ? `${occurrence.slice(8, 10)}.${occurrence.slice(5, 7)} · ежегодно` : occurrence;
-}
-
-function monthTitle(date: string) {
-  const value = new Date(`${date}T12:00:00`);
-  return new Intl.DateTimeFormat("ru-RU", { month: "long" }).format(value);
-}
-
-function CalendarDay({ count, date, faded, selected, onClick }: { count: number; date: string; faded?: boolean; selected: boolean; onClick: () => void }) {
-  return (
-    <button className={`calendar-day ${selected ? "selected" : ""} ${isToday(date) ? "today" : ""} ${faded ? "opacity-35" : ""}`} onClick={onClick} type="button">
-      <span className="calendar-weekday text-[10px] font-bold uppercase text-[var(--muted)]">{shortWeekday(date)}</span>
-      <span className="text-lg font-black">{Number(date.slice(8, 10))}</span>
-      <span className="h-1.5">{count ? <i className="mx-auto block h-1.5 w-1.5 rounded-full bg-current" /> : null}</span>
-    </button>
-  );
-}
-
-function AgendaSection({ emptyAction, entries, members, onComplete, onOpen, spaces, title }: { emptyAction?: () => void; entries: DiaryEntry[]; members: Member[]; onComplete: (entry: DiaryEntry) => void; onOpen: (entry: DiaryEntry) => void; spaces: Space[]; title: string }) {
-  if (!entries.length && !emptyAction) return null;
-  return (
-    <section className="grid gap-2">
-      <div className="flex items-center justify-between px-1">
-        <h2 className="text-base font-black">{title}</h2>
-        {entries.length ? <span className="text-sm font-bold text-[var(--muted)]">{entries.length}</span> : null}
-      </div>
-      {entries.length ? entries.map((entry) => <EntryCard entry={entry} key={entry.id} members={members} spaces={spaces} onComplete={() => onComplete(entry)} onOpen={() => onOpen(entry)} />) : (
-        <Surface className="empty-state p-5 text-center">
-          <h2>Ближайших дат нет</h2>
-          <p>Добавьте событие — оно появится в календаре и плане.</p>
-          <Button className="empty-cta" variant="primary" onClick={emptyAction}>Добавить</Button>
-        </Surface>
-      )}
-    </section>
-  );
+function DaySheet({ date, entries, dates, events, members, spaces, onClose, onComplete, onOpen, onAdd }: { date: string; entries: DiaryEntry[]; dates: ImportantDate[]; events: CalendarEvent[]; members: Member[]; spaces: Space[]; onClose: () => void; onComplete: (entry: DiaryEntry) => void; onOpen: (entry: DiaryEntry) => void; onAdd: () => void }) {
+  const root = useRef<HTMLDivElement>(null);
+  useModalLayer(root, onClose);
+  return <div ref={root} className="app-overlay z-[80]" onClick={onClose}><Surface role="dialog" aria-modal="true" aria-label="Дела на выбранную дату" className="app-dialog day-sheet" onClick={event => event.stopPropagation()}><div className="dialog-heading"><div><p className="screen-eyebrow">План дня</p><h2>{formatHeaderDate(date)}</h2></div><button className="icon-control" aria-label="Закрыть день" onClick={onClose} type="button"><X size={20} /></button></div><div className="day-agenda">
+    {dates.map(item => <div className="calendar-event" key={item.id}><CalendarDays size={19} /><div><b>{item.title}</b><small>{item.type === "birthday" ? "День рождения" : "Памятная дата"}</small></div></div>)}
+    {events.map(item => <div className="calendar-event" key={item.id}><CalendarDays size={19} /><div><b>{item.title}</b><small>{item.startTime ?? "Весь день"}</small></div></div>)}
+    {entries.map(entry => <EntryCard key={entry.id} entry={entry} members={members} spaces={spaces} onComplete={() => onComplete(entry)} onOpen={() => onOpen(entry)} />)}
+    {!entries.length && !dates.length && !events.length ? <div className="day-empty"><CalendarDays size={36} /><h3>Этот день свободен</h3><p>Можно оставить время для себя или добавить дело.</p></div> : null}
+    <Button variant="primary" onClick={onAdd}><Plus size={18} />Добавить на этот день</Button>
+  </div></Surface></div>;
 }

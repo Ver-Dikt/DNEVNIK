@@ -3,6 +3,7 @@ import type { AssignedTo, DomainId, KnowledgeStore } from "@/lib/types";
 
 export function detectDomain(text: string, knowledge: KnowledgeStore = defaultKnowledge): { domain: DomainId; area: string; confidence: number; matchedText?: string } {
   const normalized = text.toLowerCase();
+  if (/(?:^|[^\p{L}])(?:по школе|для школы|в школу|в школе|школьн[а-я]*|домашнее задание)(?![\p{L}])/iu.test(normalized)) return { domain: "general", area: "Школа", confidence: .97, matchedText: "school context" };
   if (/(?:^|[^\p{L}])(?:для дома|по дому|дома|домой|в раздел дом)(?![\p{L}])/iu.test(normalized)) return { domain: "home", area: "Дом", confidence: 0.97, matchedText: "explicit home" };
   if (/(?:^|[^\p{L}])(?:в работу|по работе|для работы|дизайн|макет|логотип|заказчик)(?![\p{L}])/iu.test(normalized)) return { domain: "work", area: "Работа", confidence: 0.97, matchedText: "explicit work" };
   let best: { domain: DomainId; area: string; confidence: number; matchedText?: string } = { domain: "general", area: "Личное", confidence: 0.2 };

@@ -230,6 +230,8 @@ export function EntryDetailSheet({
 
           {(isWish || advancedOpen) && !isPurchase ? <Field label="Ссылка"><Input autoCapitalize="none" autoCorrect="off" inputMode="url" value={entry.url ?? entry.wish?.url ?? ""} onChange={(event) => { const url = event.target.value || undefined; onChange({ url, wish: isWish ? { ...entry.wish, status: entry.wish?.status ?? "saved", url } : entry.wish }); }} /></Field> : null}
 
+          {isWish ? <Field label="Ссылка на картинку"><Input aria-label="Ссылка на картинку товара" inputMode="url" autoCapitalize="none" value={entry.wish?.imageUrl ?? ""} placeholder="https://…" onChange={event => onChange({ wish: { ...entry.wish, status: entry.wish?.status ?? "saved", imageUrl: event.target.value || undefined } })} /></Field> : null}
+
           {advancedOpen ? <div className="grid gap-2">
             <div className="text-sm font-black">Чеклист</div>
             {(entry.checklist ?? []).map((item) => (

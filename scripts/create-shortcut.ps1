@@ -1,5 +1,6 @@
-param(
+﻿param(
   [switch]$CopyToDesktop,
+  [switch]$LocalAI,
   [string]$DesktopPath = [Environment]::GetFolderPath('DesktopDirectory')
 )
 
@@ -42,25 +43,32 @@ try {
   $stream.Dispose()
 }
 
-$shortcutName = 'Ежедневник.lnk'
+$shortcutName = if ($LocalAI) { 'Ежедневник с ИИ.lnk' } else { 'Ежедневник.lnk' }
 $shortcutPath = Join-Path $projectRoot $shortcutName
 $shell = New-Object -ComObject WScript.Shell
 try {
   $shortcut = $shell.CreateShortcut($shortcutPath)
   $shortcut.TargetPath = $browser
   $shortcut.Arguments = '--profile-directory=Default --app=' + $appUrl
+  if ($LocalAI) {
+    $node = (Get-Command node -ErrorAction Stop).Source
+    $entrypoint = Join-Path $projectRoot 'scripts\start-local-ai.mjs'
+    $shortcut.TargetPath = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $shortcut.Arguments = '-NoProfile -WindowStyle Hidden -Command "& ''' + $node.Replace("'", "''") + ''' ''' + $entrypoint.Replace("'", "''") + '''"'
+  }
   $shortcut.WorkingDirectory = $projectRoot
   $shortcut.IconLocation = $iconPath + ',0'
   $shortcut.Description = 'Ежедневник — задачи, покупки и заметки с синхронизацией Supabase'
   $shortcut.Save()
   $saved = $shell.CreateShortcut($shortcutPath)
-  if ($saved.TargetPath -ne $browser -or $saved.Arguments -notlike '*--app=https://ver-dikt.github.io/DNEVNIK/*') { throw 'Shortcut verification failed.' }
+  if ($LocalAI) { if ($saved.Arguments -notlike '*start-local-ai.mjs*') { throw 'Local shortcut verification failed.' } }
+  elseif ($saved.TargetPath -ne $browser -or $saved.Arguments -notlike '*--app=https://ver-dikt.github.io/DNEVNIK/*') { throw 'Shortcut verification failed.' }
   if ($CopyToDesktop) {
     if (-not (Test-Path -LiteralPath $DesktopPath -PathType Container)) { throw 'Desktop directory does not exist.' }
     $desktopShortcut = Join-Path $DesktopPath $shortcutName
     if (Test-Path -LiteralPath $desktopShortcut) {
       $existing = $shell.CreateShortcut($desktopShortcut)
-      if ($existing.Arguments -notlike '*https://ver-dikt.github.io/DNEVNIK/*') { throw 'An unrelated shortcut already exists on the desktop.' }
+      if ($existing.Arguments -notlike '*https://ver-dikt.github.io/DNEVNIK/*' -and $existing.Arguments -notlike '*start-local-ai.mjs*') { throw 'An unrelated shortcut already exists on the desktop.' }
     }
     Copy-Item -LiteralPath $shortcutPath -Destination $desktopShortcut -Force
   }

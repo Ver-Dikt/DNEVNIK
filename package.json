@@ -14,11 +14,12 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
     "lucide-react": "latest",
-    "next": "^16.3.5",
+    "next": "16.4.3",
     "react": "latest",
     "react-dom": "latest"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@eslint/eslintrc": "latest",
     "@tailwindcss/postcss": "latest",
     "@testing-library/react": "latest",
@@ -26,7 +27,7 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "eslint": "latest",
-    "eslint-config-next": "^16.3.5",
+    "eslint-config-next": "16.4.3",
     "fake-indexeddb": "^6.2.5",
     "playwright": "^1.62.1",
     "tailwindcss": "latest",
