@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
 import { commitCloudSnapshot } from "./cloud-sync";
+import { cloudKnownState } from "./cloud-merge";
 
 const first = { id: "phone", title: "Телефон", updatedAt: "2026-10-25T10:00:00.000Z" };
 const second = { id: "computer", title: "Компьютер", updatedAt: "2026-10-26T10:00:00.000Z" };
@@ -33,6 +34,19 @@ function fakeClient(conflict = false) {
 }
 
 describe("cloud compare-and-swap", () => {
+  it("does not rewrite an unchanged snapshot on every poll", async () => {
+    const mock = fakeClient();
+    const first = await commitCloudSnapshot(mock.client,"user",async()=>({entries:[second]}),null,()=>true);
+    await commitCloudSnapshot(mock.client,"user",async()=>first.merged,cloudKnownState(first.merged),()=>true);
+    expect(mock.writes()).toBe(1);
+  });
+  it("still commits deletions and their tombstones", async () => {
+    const mock = fakeClient();
+    const first = await commitCloudSnapshot(mock.client,"user",async()=>({entries:[second]}),null,()=>true);
+    const next = await commitCloudSnapshot(mock.client,"user",async()=>({...first.merged,entries:[]}),cloudKnownState(first.merged),()=>true);
+    expect(mock.writes()).toBe(2);
+    expect(next.merged.entries).toEqual([]);
+  });
   it("merges both devices before committing", async () => {
     const { client } = fakeClient();
     const result = await commitCloudSnapshot(client, "user", async () => ({ entries: [second] }), null, () => true);

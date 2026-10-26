@@ -18,6 +18,8 @@ export function useCloudSync({ ready, exportData, importData }: { ready: boolean
   const latestExportRef = useRef(exportData);
   const latestImportRef = useRef(importData);
   const syncingRef = useRef(false);
+  const pendingSyncRef = useRef(false);
+  const syncAgainRef = useRef<() => void>(() => undefined);
   const activeUserRef = useRef<string | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [state, setState] = useState<CloudState>(() => process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ? "connecting" : "disabled");
@@ -27,7 +29,8 @@ export function useCloudSync({ ready, exportData, importData }: { ready: boolean
   const runSync = useCallback(async (initial = false) => {
     const client = clientRef.current;
     const user = session?.user;
-    if (!client || !user || syncingRef.current || (!initial && initializedUserRef.current !== user.id)) return false;
+    if (!client || !user || (!initial && initializedUserRef.current !== user.id)) return false;
+    if (syncingRef.current) { pendingSyncRef.current = true; return false; }
     syncingRef.current = true;
     setState(initial ? "connecting" : "saving");
     setMessage(initial ? "Безопасно объединяю данные устройства и облака…" : "Проверяю изменения на других устройствах…");
@@ -61,10 +64,12 @@ export function useCloudSync({ ready, exportData, importData }: { ready: boolean
       return false;
     } finally {
       syncingRef.current = false;
+      if (pendingSyncRef.current) { pendingSyncRef.current = false; window.setTimeout(() => syncAgainRef.current(), 300); }
     }
   }, [session]);
 
   const saveNow = useCallback(() => runSync(initializedUserRef.current !== session?.user.id), [runSync, session?.user.id]);
+  useEffect(() => { syncAgainRef.current = () => { void saveNow(); }; return () => { syncAgainRef.current = () => undefined; }; }, [saveNow]);
 
   useEffect(() => {
     const client = createSupabaseBrowserClient();
@@ -93,7 +98,7 @@ export function useCloudSync({ ready, exportData, importData }: { ready: boolean
   useEffect(() => {
     if (!ready || !session?.user) return;
     const refresh = () => { if (document.visibilityState === "visible") void saveNow(); };
-    const interval = window.setInterval(refresh, 60_000);
+    const interval = window.setInterval(refresh, 15_000);
     window.addEventListener("online", refresh);
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", refresh);

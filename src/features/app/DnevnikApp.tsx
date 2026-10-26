@@ -9,6 +9,9 @@ import { Button, Surface } from "@/components/ui/native";
 import { kindLabels } from "@/features/shared/entry-utils";
 import { CaptureSheet } from "@/features/capture/CaptureSheet";
 import { LocalAssistant } from "@/features/assistant/LocalAssistant";
+import { RecordsView } from "@/features/entries/RecordsView";
+import { applyAssistantPlan, type AssistantPlan } from "@/lib/assistant-actions";
+import { ensureProjectPath, normalizeKindPatch, organizeEntries, projectPathFor } from "@/lib/organization";
 import { EntryDetailSheet } from "@/features/entries/EntryDetailSheet";
 import { EntryCard } from "@/features/entries/EntryCard";
 import { IdeasView, MoneyView, SettingsView, TasksView, UsView, WorkView } from "@/features/app/DirectViews";
@@ -16,7 +19,7 @@ import { DocumentsHubView } from "@/features/family/FamilyViews";
 import { PlanView } from "@/features/planner/PlanView";
 import { PurchasesView } from "@/features/purchases/PurchasesView";
 import { WishlistView } from "@/features/wishlist/WishlistView";
-import { SchoolView } from "@/features/school/SchoolView";
+import { SchoolView, supplies } from "@/features/school/SchoolView";
 import { CloudSyncButton } from "@/features/sync/CloudSyncButton";
 import { useCloudSync } from "@/hooks/use-cloud-sync";
 import type { ScreenId } from "@/features/app/types";
@@ -55,6 +58,8 @@ const appBasePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 export function DnevnikApp() {
   const data = useDnevnikData();
+  const currentData = useRef(data);
+  useEffect(() => { currentData.current = data; }, [data]);
   const searchRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [screen, setScreen] = useState<ScreenId>("us");
@@ -173,7 +178,7 @@ export function DnevnikApp() {
   }, []);
 
   useEffect(() => {
-    const screens: ScreenId[] = ["us", "plan", "tasks", "school", "work", "purchases", "wishlist", "money", "documents", "ideas", "settings"];
+    const screens: ScreenId[] = ["us", "plan", "tasks", "school", "work", "purchases", "wishlist", "money", "documents", "ideas", "records", "settings"];
     const applyRoute = () => {
       const target = window.location.hash.slice(1) as ScreenId;
       setScreen(screens.includes(target) ? target : "us");
@@ -355,7 +360,10 @@ export function DnevnikApp() {
   function savePreview(target = preview) {
     if (!target || savedPreviewsRef.current.has(target)) return;
     savedPreviewsRef.current.add(target);
-    const saved = target.items.map((item) => normalizeSavedEntry(createEntryFromParsed(item), data.spaces, data.projects));
+    let saved = target.items.map((item) => normalizeSavedEntry(createEntryFromParsed(item), data.spaces, data.projects));
+    const structured = organizeEntries(saved, data.projects, data.spaces);
+    saved = structured.entries;
+    data.setProjects(structured.projects);
     const original = reparseId ? data.entries.find(entry => entry.id === reparseId) : undefined;
     if (original && saved[0]) {
       saved[0] = { ...original, ...saved[0], id: original.id, createdAt: original.createdAt, revision: (original.revision ?? 1) + 1 };
@@ -380,7 +388,7 @@ export function DnevnikApp() {
   }
 
   function updatePreviewItem(index: number, patch: Partial<AIParseResult["items"][number]>) {
-    setPreview((current) => current ? { ...current, items: current.items.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item) } : current);
+    setPreview((current) => current ? { ...current, items: current.items.map((item, itemIndex) => itemIndex === index ? { ...item, ...normalizeKindPatch(item as DiaryEntry, patch) } : item) } : current);
   }
 
   function toggleVoice() {
@@ -471,7 +479,16 @@ export function DnevnikApp() {
   }
 
   function updateEntry(id: string, patch: Partial<DiaryEntry>) {
-    data.setEntries((current) => current.map((entry) => entry.id === id ? { ...entry, ...patch, updatedAt: new Date().toISOString(), revision: (entry.revision ?? 1) + 1 } : entry));
+    data.setEntries((current) => current.map((entry) => entry.id === id ? { ...entry, ...normalizeKindPatch(entry, patch), updatedAt: new Date().toISOString(), revision: (entry.revision ?? 1) + 1 } : entry));
+  }
+  function saveSchoolSupplies(checked: string[]) {
+    const now = new Date().toISOString();
+    data.setEntries(current => {
+      const old = current.find(entry => entry.category === "school_supplies");
+      const checklist = supplies.map((title,index) => ({ id: `supply-${index}`, title, done: checked.includes(title), createdAt: old?.createdAt ?? now }));
+      if(old) return current.map(entry => entry.id === old.id ? { ...entry, checklist, updatedAt: now, revision: (entry.revision ?? 1) + 1 } : entry);
+      return [{ id: crypto.randomUUID(), title: "Школьные принадлежности", kind: "note", category: "school_supplies", area: "Школа", projectPath: ["Школа"], assignedTo: "shared", visibility: "shared", status: "active", priority: "normal", schedule: "none", checklist, createdAt: now, updatedAt: now, revision: 1 }, ...current];
+    });
   }
 
   function deleteEntry(entry: DiaryEntry) {
@@ -486,12 +503,39 @@ export function DnevnikApp() {
     return space;
   }
 
-  function createProject(name: string, spaceId?: string): ProjectNode {
-    const now = new Date().toISOString();
+  function createProject(name: string, spaceId?: string, parentId?: string): ProjectNode {
     const space = data.spaces.find((item) => item.id === spaceId);
-    const project = { id: slug(`${spaceId ?? "free"}-${name}`), name, spaceId, area: space?.name, status: "active" as const, aliases: [name.toLowerCase()], createdAt: now, updatedAt: now, revision: 1 };
-    data.setProjects((current) => current.some((item) => item.id === project.id) ? current : [project, ...current]);
-    return project;
+    const parent = data.projects.find(item => item.id === parentId);
+    const result = ensureProjectPath([...(parent ? projectPathFor(parent, data.projects) : [space?.name ?? "Личное"]), name], data.projects, data.spaces);
+    data.setProjects(result.projects);
+    return result.projects.find(item => item.id === result.patch.projectId)!;
+  }
+
+  async function backupBeforeManagement() {
+    const snapshot = await encodeBackupFiles({ ...await currentData.current.exportData(), learnedRules });
+    // Abort the mutation if the recovery snapshot cannot be persisted.
+    try { localStorage.setItem("dnevnik.beforeManagement", JSON.stringify(snapshot)); }
+    catch { throw new Error("Не хватает места для резервной копии. Экспортируйте данные в настройках и освободите место перед массовыми изменениями."); }
+  }
+  function downloadManagementBackup() {
+    const raw = localStorage.getItem("dnevnik.beforeManagement");
+    if(!raw) { setToast({ title: "Пока нет копии", detail: "Она создаётся перед первой операцией помощника." }); return; }
+    const url = URL.createObjectURL(new Blob([raw], { type: "application/json" }));
+    const link = document.createElement("a"); link.href = url; link.download = "dnevnik-before-management.json"; document.body.appendChild(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url),30000);
+  }
+  async function organizeAll() {
+    await backupBeforeManagement();
+    const current = currentData.current;
+    const result = organizeEntries(current.entries, current.projects, current.spaces);
+    current.setProjects(result.projects); current.setEntries(result.entries);
+    setToast({ title: "Проекты упорядочены", detail: `Обновлено записей: ${result.changed}. Новых подпроектов: ${result.addedProjects}.` });
+  }
+  async function applyLocalPlan(plan: AssistantPlan) {
+    await backupBeforeManagement();
+    const current = currentData.current;
+    const result = applyAssistantPlan(plan, current.entries, current.projects, current.spaces);
+    if(plan.actions.length) { current.setProjects(result.projects); current.setEntries(result.entries); }
+    if(plan.sync && !plan.actions.length && !await cloud.saveNow()) throw new Error("Облако не подтвердило синхронизацию. Проверьте вход и подключение.");
   }
 
   function rememberCurrentEntry() {
@@ -573,7 +617,8 @@ export function DnevnikApp() {
         </div>
         {search.trim() ? <Surface className="search-results" aria-label="Результаты поиска"><p className="px-3 py-2 text-sm text-[var(--muted)]">{searchResults.length ? "Найдено: " + searchResults.length : "Ничего не найдено. Попробуйте другое слово."}</p>{searchResults.slice(0, 50).map(entry => <button type="button" className="search-result" key={entry.id} onClick={() => setDetailId(entry.id)}><b>{entry.title}</b><span>{entry.area ?? "Личное"} · {kindLabels[entry.kind] ?? "Запись"}</span></button>)}{searchResults.length > 50 ? <p className="p-3 text-sm text-[var(--muted)]">Показаны первые 50 записей. Уточните поиск.</p> : null}</Surface> : null}
         {data.status.warning ? <Surface className="mb-4 p-3 text-sm text-[#a15c00]">{data.status.warning}</Surface> : null}
-        <LocalAssistant entries={data.entries} onProposal={proposal => { setReparseId(null); setQuickText(proposal.rawText); setPreview(proposal); setCaptureOpen(true); }} />
+        <LocalAssistant entries={data.entries} projects={data.projects} spaces={data.spaces} syncMessage={cloud.message} onSync={cloud.saveNow} onApply={applyLocalPlan} onOrganize={organizeAll} onProposal={proposal => { setReparseId(null); setQuickText(proposal.rawText); setPreview(proposal); setCaptureOpen(true); }} />
+        {screen === "records" ? <RecordsView entries={data.entries} projects={data.projects} spaces={data.spaces} members={data.members} onOpen={entry => setDetailId(entry.id)} onComplete={completeEntry} onAdd={() => createManualEntry("note")} onOrganize={organizeAll} onCreateProject={path => { const result = ensureProjectPath(path, data.projects, data.spaces); data.setProjects(result.projects); }} /> : null}
         {screen === "plan" ? (
           <PlanView calendarEvents={data.calendarEvents} entries={data.entries} importantDates={data.importantDates} members={data.members} planTransactions={data.planTransactions} sharedPlans={data.sharedPlans} spaces={data.spaces} ownerFilter={ownerFilter} mode={planMode} selectedDate={selectedDate} onModeChange={setMode} onDateChange={setSelectedDate} onOwnerFilterChange={setOwnerFilter} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} onAdd={() => createManualEntry("task", { dueDate: selectedDate, schedule: "today", assignedTo: ownerFilter, visibility: ownerFilter === "shared" ? "shared" : "private" })} />
         ) : null}
@@ -583,7 +628,7 @@ export function DnevnikApp() {
         {screen === "tasks" ? (
           <TasksView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={(assignedTo = "me") => createManualEntry("task", { assignedTo, visibility: assignedTo === "shared" ? "shared" : "private" })} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
-        {screen === "school" ? <><SchoolView /><section className="grid gap-3 mt-5"><div className="flex items-center justify-between gap-3"><h2 className="text-lg font-black">Школьные записи</h2><Button onClick={() => createManualEntry("note", { area: "Школа", projectPath: ["Школа"] })}>Добавить</Button></div>{data.entries.filter(entry => entry.area === "Школа").map(entry => <EntryCard key={entry.id} entry={entry} spaces={data.spaces} onOpen={() => setDetailId(entry.id)} onComplete={() => completeEntry(entry)} />)}<p className="text-sm text-[var(--muted)]">Можно надиктовать: «По школе надо подготовить проект» — запись появится здесь.</p></section></> : null}
+        {screen === "school" ? <><SchoolView checked={data.entries.find(entry => entry.category === "school_supplies")?.checklist?.filter(item => item.done).map(item => item.title) ?? null} onChangeChecked={saveSchoolSupplies} /><section className="grid gap-3 mt-5"><div className="flex items-center justify-between gap-3"><h2 className="text-lg font-black">Школьные записи</h2><Button onClick={() => createManualEntry("note", { area: "Школа", projectPath: ["Школа"] })}>Добавить</Button></div>{data.entries.filter(entry => entry.area === "Школа").map(entry => <EntryCard key={entry.id} entry={entry} spaces={data.spaces} onOpen={() => setDetailId(entry.id)} onComplete={() => completeEntry(entry)} />)}<p className="text-sm text-[var(--muted)]">Можно надиктовать: «По школе надо подготовить проект» — запись появится здесь.</p></section></> : null}
         {screen === "work" ? (
           <WorkView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={() => createManualEntry("task", { area: "Работа", projectPath: ["Работа"], domain: "work" })} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
@@ -603,7 +648,7 @@ export function DnevnikApp() {
           <IdeasView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={() => createManualEntry("idea")} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
         {screen === "settings" ? (
-          <SettingsView importantDates={data.importantDates} members={data.members} settings={data.settings} onChangeImportantDates={data.setImportantDates} onChangeMembers={data.setMembers} onChangeSettings={data.setSettings} onClearAll={() => { if (window.confirm("Удалить все данные ежедневника? Перед этим сохраните экспорт JSON.")) { keepListeningRef.current = false; recognitionRef.current?.abort(); setIsListening(false); setQuickText(""); setPreview(null); setLearnedRules([]); setDetailId(null); setCaptureOpen(false); setToast(null); latestTextRef.current = ""; voiceBaseRef.current = ""; data.clearEverything(); } }} onClearEntries={() => { if (window.confirm("Удалить все записи? Перед этим сохраните экспорт JSON.")) data.clearEntries(); }} onExport={exportData} onImport={importData} />
+          <SettingsView importantDates={data.importantDates} members={data.members} settings={data.settings} onChangeImportantDates={data.setImportantDates} onChangeMembers={data.setMembers} onChangeSettings={data.setSettings} onClearAll={() => { if (window.confirm("Удалить все данные ежедневника? Перед этим сохраните экспорт JSON.")) { keepListeningRef.current = false; recognitionRef.current?.abort(); setIsListening(false); setQuickText(""); setPreview(null); setLearnedRules([]); setDetailId(null); setCaptureOpen(false); setToast(null); latestTextRef.current = ""; voiceBaseRef.current = ""; data.clearEverything(); } }} onClearEntries={() => { if (window.confirm("Удалить все записи? Перед этим сохраните экспорт JSON.")) data.clearEntries(); }} onExport={exportData} onDownloadRecovery={downloadManagementBackup} onImport={importData} />
         ) : null}
       </div>
 
@@ -649,7 +694,7 @@ function Toast({ action, actionLabel, detail, title }: { action?: () => void; ac
 
 function normalizeSavedEntry(entry: DiaryEntry, spaces: Space[], projects: ProjectNode[]): DiaryEntry {
   const space = spaces.find((item) => item.name === entry.area || item.id === entry.spaceId);
-  const project = projects.find((item) => item.name === entry.project || item.id === entry.projectId);
+  const project = projects.find((item) => item.id === entry.projectId) ?? projects.find(item => entry.projectPath?.length ? JSON.stringify(projectPathFor(item, projects)) === JSON.stringify(entry.projectPath) : item.name === entry.project && item.area === entry.area);
   return {
     ...entry,
     kind: entry.kind === "inbox" ? "note" : entry.kind,

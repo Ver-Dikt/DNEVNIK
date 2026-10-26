@@ -5,7 +5,7 @@ import { nextOccurrence, pluralRu, relationshipDays, relationshipMilestones, upc
 import { todayIso } from "@/lib/dates";
 import { CalendarHeart, CheckCircle2, ChevronRight, Gift, GraduationCap, Heart, Plus, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
-import { Button, Field, Input, Segmented, Surface } from "@/components/ui/native";
+import { Button, Field, Input, Segmented, Select, Surface } from "@/components/ui/native";
 import { EntryCard } from "@/features/entries/EntryCard";
 import { calculateBudget } from "@/lib/finance";
 import { purchaseStatusGroup, wishStatus } from "@/features/shared/entry-utils";
@@ -174,14 +174,17 @@ export function IdeasView({ entries, members, spaces, onAdd, onComplete, onOpen 
 }
 
 export function MoneyView({ entries, members, sharedPlans, spaces, onOpen, onComplete }: { entries: DiaryEntry[]; members: Member[]; sharedPlans: SharedPlan[]; spaces: Space[]; onOpen: (entry: DiaryEntry) => void; onComplete: (entry: DiaryEntry) => void }) {
-  const budget = calculateBudget(entries);
-  const moneyEntries = entries.filter((entry) => entry.kind === "purchase");
+  const [currency, setCurrency] = useState("RUB");
+  const currencies = [...new Set(["RUB", ...entries.filter(entry => entry.kind === "purchase").map(entry => entry.purchase?.currency ?? entry.currency ?? "RUB")])];
+  const moneyEntries = entries.filter((entry) => entry.kind === "purchase" && (entry.purchase?.currency ?? entry.currency ?? "RUB") === currency);
+  const budget = calculateBudget(moneyEntries);
   return (
     <div className="grid gap-4">
       <Header eyebrow="Обзор покупок" title="Деньги" />
+      <Field label="Валюта обзора"><Select value={currency} onChange={event => setCurrency(event.target.value)}>{currencies.map(item => <option key={item}>{item}</option>)}</Select></Field>
       <div className="grid gap-3 sm:grid-cols-3">
-        <Surface className="summary-card"><span>Покупки</span><b>{budget.planned.toLocaleString("ru-RU")} ₽</b><small>Планируется</small></Surface>
-        <Surface className="summary-card"><span>Потрачено</span><b>{budget.actual.toLocaleString("ru-RU")} ₽</b><small>Из покупок</small></Surface>
+        <Surface className="summary-card"><span>Покупки</span><b>{budget.planned.toLocaleString("ru-RU")} {currency}</b><small>Планируется</small></Surface>
+        <Surface className="summary-card"><span>Потрачено</span><b>{budget.actual.toLocaleString("ru-RU")} {currency}</b><small>Из покупок</small></Surface>
         <Surface className="summary-card"><span>Планы</span><b>{sharedPlans.length}</b><small>Цели и копилки</small></Surface>
       </div>
       <EntryList entries={moneyEntries} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} empty="Финансовых записей пока нет." />
@@ -212,10 +215,10 @@ export function SearchView({ calendarEvents, entries, importantDates, loyaltyCar
   );
 }
 
-export function SettingsView({ importantDates, members, onChangeImportantDates, onChangeMembers, onChangeSettings, onClearAll, onClearEntries, onExport, onImport, settings }: { importantDates: ImportantDate[]; members: Member[]; settings: AppSettings; onChangeImportantDates: (dates: ImportantDate[] | ((current: ImportantDate[]) => ImportantDate[])) => void; onChangeMembers: (members: Member[] | ((current: Member[]) => Member[])) => void; onChangeSettings: (settings: AppSettings) => void; onClearAll: () => void; onClearEntries: () => void; onExport: () => void; onImport: (file: File) => void }) {
+export function SettingsView({ importantDates, members, onChangeImportantDates, onChangeMembers, onChangeSettings, onClearAll, onClearEntries, onExport, onDownloadRecovery, onImport, settings }: { importantDates: ImportantDate[]; members: Member[]; settings: AppSettings; onChangeImportantDates: (dates: ImportantDate[] | ((current: ImportantDate[]) => ImportantDate[])) => void; onChangeMembers: (members: Member[] | ((current: Member[]) => Member[])) => void; onChangeSettings: (settings: AppSettings) => void; onClearAll: () => void; onClearEntries: () => void; onExport: () => void; onDownloadRecovery: () => void; onImport: (file: File) => void }) {
   return (
     <div className="grid gap-4">
-      <Header eyebrow="Мы" title="Настройки пары" />
+      <Header eyebrow="Ежедневник" title="Настройки" />
       <Surface className="pair-settings-card grid gap-4 p-4">
         <h2 className="text-lg font-black">Наши данные</h2>
         {members.map((member) => <MemberEditor key={member.id} member={member} onChange={(patch) => updateMember(member.id, patch, onChangeMembers)} />)}
@@ -239,6 +242,7 @@ export function SettingsView({ importantDates, members, onChangeImportantDates, 
         <p className="text-sm text-[var(--muted)]">Записи хранятся в этом браузере. Локальная версия и сайт имеют отдельную память. Экспортируйте JSON для переноса или восстановления; приватный режим и очистка данных браузера могут удалить записи.</p>
         <div className="grid gap-2 sm:grid-cols-2">
           <Button onClick={onExport}>Экспорт JSON</Button>
+          <Button onClick={onDownloadRecovery}>Копия до изменений помощника</Button>
           <label className="button button-plain">
             Импорт JSON
             <input className="hidden" type="file" accept="application/json" onChange={(event) => {

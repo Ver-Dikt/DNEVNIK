@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { decodeBackupFiles, encodeBackupFiles } from "./backup-files";
-import { mergeCloudSnapshots, prepareLocalSnapshot, type CloudKnownState } from "./cloud-merge";
+import { mergeCloudSnapshots, prepareLocalSnapshot, sameSnapshotContent, type CloudKnownState } from "./cloud-merge";
 
 type Snapshot = Record<string, unknown>;
 
@@ -18,6 +18,7 @@ export async function commitCloudSnapshot(client: SupabaseClient, userId: string
     const merged = mergeCloudSnapshots(localForMerge, remote, now);
     const encoded = await encodeBackupFiles(merged);
     if (!isCurrent()) throw new Error("Account changed during sync");
+    if (row && encoded && typeof encoded === "object" && row.data && typeof row.data === "object" && sameSnapshotContent(encoded as Snapshot, row.data as Snapshot) && sameSnapshotContent({ metadata: (encoded as Snapshot).sync }, { metadata: (row.data as Snapshot).sync })) return { local, merged };
     const result = row
       ? await client.from("app_state").update({ data: encoded, updated_at: now }).eq("user_id", userId).eq("updated_at", row.updated_at).select("user_id").maybeSingle()
       : await client.from("app_state").insert({ user_id: userId, data: encoded, updated_at: now }).select("user_id").maybeSingle();

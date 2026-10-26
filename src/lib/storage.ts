@@ -482,7 +482,7 @@ function migrateStorage(): void {
 export function normalizeEntry(entry: DiaryEntry): DiaryEntry {
   const projectPath = entry.projectPath ?? [];
   const area = entry.area ?? projectPath[0] ?? inferArea(entry);
-  const project = entry.project ?? projectPath.at(-1);
+  const project = entry.project ?? (projectPath.length > 1 ? projectPath.at(-1) : undefined);
   const assignedTo = entry.assignedTo ?? (entry.kind === "purchase" && area === "Дом" ? "shared" : "me");
   const visibility = entry.visibility ?? (assignedTo === "shared" ? "shared" : "private");
   const purchase =
@@ -516,7 +516,7 @@ export function normalizeEntry(entry: DiaryEntry): DiaryEntry {
 
   return {
     ...entry,
-    kind: entry.kind === "inbox" ? "note" : entry.kind,
+    kind: entry.kind,
     area,
     project,
     projectPath: projectPath.length ? projectPath : [area, project].filter(Boolean) as string[],

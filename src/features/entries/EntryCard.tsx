@@ -32,7 +32,8 @@ export function EntryCard({
         </div>
         <div className={`mt-2 text-[17px] font-black leading-snug ${done ? "text-[var(--muted)] line-through" : ""}`}>{entry.title}</div>
         <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-[var(--muted)]">
-          <span>{entrySpaceName(entry, spaces)}{entry.project ? ` · ${entry.project}` : ""}</span>
+          <span>{entry.projectPath?.length ? entry.projectPath.join(" / ") : `${entrySpaceName(entry, spaces)}${entry.project ? ` · ${entry.project}` : ""}`}</span>
+          {entry.checklist?.length ? <span>Чеклист: {entry.checklist.filter(item => item.done).length}/{entry.checklist.length}</span> : null}
           {entry.time ? <span>{entry.time}</span> : null}
           {entry.dueDate ? <span>{formatDateRu(entry.dueDate)}</span> : null}
           {amount ? <span>{amount.toLocaleString("ru-RU")} {entry.purchase?.currency ?? entry.wish?.currency ?? entry.currency ?? "RUB"}</span> : null}

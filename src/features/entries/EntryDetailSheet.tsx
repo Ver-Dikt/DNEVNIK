@@ -8,6 +8,7 @@ import type { AssignedTo, DiaryEntry, EntryKind, Member, ProjectNode, RepeatRule
 import { purchaseStatusGroup, purchaseStatusToEntryStatus, wishStatus } from "@/features/shared/entry-utils";
 import { addDays } from "@/features/shared/date-utils";
 import { todayIso } from "@/lib/dates";
+import { projectPathFor } from "@/lib/organization";
 
 export function EntryDetailSheet({
   entry,
@@ -27,7 +28,7 @@ export function EntryDetailSheet({
   projects: ProjectNode[];
   spaces: Space[];
   onChange: (patch: Partial<DiaryEntry>) => void;
-  onCreateProject: (name: string, spaceId?: string) => ProjectNode;
+  onCreateProject: (name: string, spaceId?: string, parentId?: string) => ProjectNode;
   onCreateSpace: (name: string) => Space;
   onClose: () => void;
   onDelete: () => void;
@@ -38,14 +39,14 @@ export function EntryDetailSheet({
   useModalLayer(panelRef, onClose);
   const [newSpace, setNewSpace] = useState("");
   const [newProject, setNewProject] = useState("");
+  const [parentProject, setParentProject] = useState("");
   const [checkText, setCheckText] = useState("");
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const currentWishStatus = wishStatus(entry);
   const isWish = entry.kind === "wish";
   const isPurchase = entry.kind === "purchase";
-  const isWork = entry.area === "Работа" || entry.domain === "work";
-  const showStructure = !isWish && !isPurchase && !isWork && entry.kind !== "task" && entry.kind !== "idea";
-  const showCalendar = !isWish && !isPurchase && entry.kind !== "idea";
+  const showStructure = true;
+  const showCalendar = true;
   const visibleProjects = projects.filter((project) => !entry.spaceId || project.spaceId === entry.spaceId || project.area === entry.area);
 
   return (
@@ -87,7 +88,7 @@ export function EntryDetailSheet({
 
           {showCalendar ? (
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Дата"><Input type="date" value={entry.dueDate ?? ""} onChange={(event) => onChange({ dueDate: event.target.value || undefined, schedule: event.target.value ? "today" : "none" })} /></Field>
+              <Field label="Дата"><Input type="date" value={entry.dueDate ?? ""} onChange={(event) => onChange({ dueDate: event.target.value || undefined, schedule: event.target.value === todayIso() ? "today" : event.target.value === addDays(todayIso(),1) ? "tomorrow" : "none" })} /></Field>
               <Field label="Время"><Input type="time" value={entry.time ?? ""} onChange={(event) => onChange({ time: event.target.value || undefined })} /></Field>
             </div>
           ) : null}
@@ -134,30 +135,30 @@ export function EntryDetailSheet({
             </div>
           ) : null}
 
-          <Button className="w-full justify-between px-4" onClick={() => setAdvancedOpen((value) => !value)}>
-            Ещё
+          <Button className="w-full justify-between px-4" aria-label="Настройки записи" aria-expanded={advancedOpen} onClick={() => setAdvancedOpen((value) => !value)}>
+            Настройки записи
             <span>{advancedOpen ? "−" : "+"}</span>
           </Button>
 
           {advancedOpen && showStructure ? (
             <>
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Пространство">
-                  <Select value={entry.spaceId ?? ""} onChange={(event) => {
-                    const space = spaces.find((item) => item.id === event.target.value);
-                    onChange({ spaceId: space?.id, area: space?.name, projectId: undefined, project: undefined, projectPath: space ? [space.name] : [] });
+                <Field label="Раздел">
+                  <Select value={entry.area ?? "Личное"} onChange={(event) => {
+                    const area = event.target.value;
+                    const space = spaces.find((item) => item.name === area);
+                    onChange({ spaceId: space?.id, area, projectId: undefined, project: undefined, projectPath: [area] });
                   }}>
-                    <option value="">Без пространства</option>
-                    {spaces.map((space) => <option key={space.id} value={space.id}>{space.name}</option>)}
+                    {[...new Set([...spaces.map(space => space.name), "Личное", "Школа", entry.area].filter(Boolean))].map(name => <option key={name}>{name}</option>)}
                   </Select>
                 </Field>
                 <Field label="Проект">
                   <Select value={entry.projectId ?? ""} onChange={(event) => {
                     const project = projects.find((item) => item.id === event.target.value);
-                    onChange({ projectId: project?.id, project: project?.name, projectPath: [entry.area, project?.name].filter(Boolean) as string[] });
+                    onChange({ projectId: project?.id, project: project?.name, area: project?.area ?? entry.area, spaceId: project?.spaceId ?? entry.spaceId, projectPath: project ? projectPathFor(project, projects) : [entry.area ?? "Личное"] });
                   }}>
                     <option value="">Без проекта</option>
-                    {visibleProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                    {visibleProjects.map((project) => <option key={project.id} value={project.id}>{projectPathFor(project, projects).join(" / ")}</option>)}
                   </Select>
                 </Field>
               </div>
@@ -174,20 +175,24 @@ export function EntryDetailSheet({
                   }}>Создать</Button>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                  <Input placeholder="Новый проект" value={newProject} onChange={(event) => setNewProject(event.target.value)} />
+                  <Input aria-label="Новый проект" placeholder="Новый проект" value={newProject} onChange={(event) => setNewProject(event.target.value)} />
                   <Button className="px-4 font-bold" onClick={() => {
                     const name = newProject.trim();
                     if (!name) return;
-                    const project = onCreateProject(name, entry.spaceId);
-                    onChange({ projectId: project.id, project: project.name, projectPath: [entry.area, project.name].filter(Boolean) as string[] });
+                    const project = onCreateProject(name, entry.spaceId, parentProject || undefined);
+                    const parent = projects.find(item => item.id === parentProject);
+                    onChange({ projectId: project.id, project: project.name, area: project.area, projectPath: [...(parent ? projectPathFor(parent, projects) : [project.area ?? entry.area ?? "Личное"]), name] });
                     setNewProject("");
                   }}>Создать</Button>
                 </div>
+                <Field label="Родитель нового проекта"><Select value={parentProject} onChange={event => setParentProject(event.target.value)}><option value="">Корневой проект раздела</option>{visibleProjects.map(project => <option key={project.id} value={project.id}>{projectPathFor(project, projects).join(" / ")}</option>)}</Select></Field>
               </div>
             </>
           ) : null}
 
           {advancedOpen ? <div className={`grid gap-3 ${isWish ? "sm:grid-cols-1" : "sm:grid-cols-2"}`}>
+            {!isPurchase && !isWish ? <Field label="Статус"><Select value={entry.status} onChange={event => onChange({ status: event.target.value as DiaryEntry["status"], completedAt: event.target.value === "done" ? new Date().toISOString() : undefined })}><option value="active">В работе</option><option value="waiting">Ожидает</option><option value="done">Готово</option><option value="cancelled">Отменено</option></Select></Field> : null}
+            <Field label="Приоритет"><Select value={entry.priority} onChange={event => onChange({ priority: event.target.value as DiaryEntry["priority"] })}><option value="low">Низкий</option><option value="normal">Обычный</option><option value="high">Высокий</option></Select></Field>
             {showCalendar ? (
               <>
                 <Field label="Повтор">
@@ -242,7 +247,7 @@ export function EntryDetailSheet({
             ))}
             <div className="grid grid-cols-[1fr_48px] gap-2">
               <Input placeholder="Пункт чеклиста" value={checkText} onChange={(event) => setCheckText(event.target.value)} />
-              <Button className="p-0" onClick={() => {
+              <Button className="p-0" aria-label="Добавить пункт чеклиста" onClick={() => {
                 const title = checkText.trim();
                 if (!title) return;
                 onChange({ checklist: [...(entry.checklist ?? []), { id: crypto.randomUUID(), title, done: false, createdAt: new Date().toISOString() }] });
@@ -250,6 +255,7 @@ export function EntryDetailSheet({
               }}><Plus size={18} /></Button>
             </div>
           </div> : null}
+          {advancedOpen ? <><Field label="Дополнительные заметки"><Textarea value={entry.notes ?? ""} onChange={event => onChange({ notes: event.target.value })} /></Field><details><summary className="cursor-pointer py-3 font-bold">Исходный текст</summary><p className="whitespace-pre-wrap text-sm text-[var(--muted)]">{entry.originalInput ?? entry.sourceText ?? "Запись создана вручную"}</p></details><p className="text-sm text-[var(--muted)]">Изменения сохраняются автоматически на устройстве и отправляются в подключённое облако.</p></> : null}
 
           {onReparse ? <Button className="font-bold" onClick={onReparse}>Разобрать текст на записи</Button> : null}
           {entry.needsReview ? <Button className="font-bold" onClick={onRemember}>Запомнить исправление для похожих записей</Button> : null}
@@ -272,15 +278,17 @@ function MoneyFields({ entry, mode, onChange }: { entry: DiaryEntry; mode: "purc
   return (
     <div className="grid gap-3 sm:grid-cols-3">
       <Field label="Количество">
-        <Input inputMode="decimal" value={entry.purchase?.quantity ?? entry.quantity ?? ""} onChange={(event) => onChange({ quantity: numberOrUndefined(event.target.value), purchase: mode === "purchase" ? { status: entry.purchase?.status ?? "planned", ...entry.purchase, quantity: numberOrUndefined(event.target.value) } : entry.purchase })} />
+        <Input inputMode="decimal" value={entry.purchase?.quantity ?? entry.quantity ?? ""} onChange={(event) => { const quantity = numberOrUndefined(event.target.value); const unitPrice = entry.purchase?.unitPrice ?? entry.unitPrice; const totalPrice = unitPrice === undefined ? undefined : unitPrice * (quantity ?? 1); onChange({ quantity, ...(mode === "purchase" ? { totalPrice, purchase: { status: entry.purchase?.status ?? "planned", ...entry.purchase, quantity, totalPrice } } : {}) }); }} />
       </Field>
-      <Field label="Цена">
+      <Field label={mode === "purchase" ? "Цена за единицу" : "Ориентировочная цена"}>
         <Input inputMode="decimal" value={entry.purchase?.unitPrice ?? entry.wish?.estimatedPrice ?? entry.unitPrice ?? ""} onChange={(event) => {
           const value = numberOrUndefined(event.target.value);
-          onChange(mode === "purchase" ? { unitPrice: value, purchase: { status: entry.purchase?.status ?? "planned", ...entry.purchase, unitPrice: value, plannedPrice: value } } : { unitPrice: value, wish: { status: entry.wish?.status ?? "saved", ...entry.wish, estimatedPrice: value } });
+          const totalPrice = value === undefined ? undefined : value * (entry.purchase?.quantity ?? entry.quantity ?? 1);
+          onChange(mode === "purchase" ? { unitPrice: value, totalPrice, purchase: { status: entry.purchase?.status ?? "planned", ...entry.purchase, unitPrice: value, totalPrice, plannedPrice: totalPrice } } : { unitPrice: value, wish: { status: entry.wish?.status ?? "saved", ...entry.wish, estimatedPrice: value } });
         }} />
       </Field>
       <Field label="Магазин"><Input value={entry.store ?? entry.purchase?.store ?? entry.wish?.store ?? ""} onChange={(event) => onChange({ store: event.target.value || undefined })} /></Field>
+      <Field label="Валюта"><Select value={entry.purchase?.currency ?? entry.wish?.currency ?? entry.currency ?? "RUB"} onChange={event => onChange({ currency: event.target.value, ...(mode === "purchase" ? { purchase: { ...entry.purchase, status: entry.purchase?.status ?? "planned", currency: event.target.value } } : { wish: { ...entry.wish, status: entry.wish?.status ?? "saved", currency: event.target.value } }) })}>{["RUB","USD","EUR","NOK"].map(currency => <option key={currency}>{currency}</option>)}</Select></Field>
     </div>
   );
 }

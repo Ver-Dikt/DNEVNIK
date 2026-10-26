@@ -32,23 +32,24 @@ const lessons: Record<number, Lesson[]> = {
     { title: "Музыка", time: "12:35–13:15", bring: ["Тетрадь по музыке"] }
   ]
 };
-const supplies = ["Синие ручки", "Зелёная ручка", "Красная ручка", "Простой карандаш", "Цветные карандаши", "Ластик", "Точилка", "Линейка 15 см", "Клей-карандаш", "Подставка для книг", "Закладки в учебники", "Папка А4 для портфолио", "Тряпочка для парты"];
+export const supplies = ["Синие ручки", "Зелёная ручка", "Красная ручка", "Простой карандаш", "Цветные карандаши", "Ластик", "Точилка", "Линейка 15 см", "Клей-карандаш", "Подставка для книг", "Закладки в учебники", "Папка А4 для портфолио", "Тряпочка для парты"];
 const dayFormat = new Intl.DateTimeFormat("ru-RU", { weekday: "long", day: "numeric", month: "long" });
 function isoLocal(date: Date) { const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60_000); return shifted.toISOString().slice(0, 10); }
 
-export function SchoolView() {
+export function SchoolView({ checked: cloudChecked, onChangeChecked }: { checked: string[] | null; onChangeChecked: (items: string[]) => void }) {
   const [date, setDate] = useState(() => isoLocal(new Date()));
-  const [checked, setChecked] = useState<string[]>([]);
+  const checked = cloudChecked ?? [];
   useEffect(() => {
     queueMicrotask(() => {
-      try { setChecked(JSON.parse(localStorage.getItem("dnevnik-school-supplies") ?? "[]")); } catch { setChecked([]); }
+      if (cloudChecked !== null) return;
+      try { const legacy: unknown = JSON.parse(localStorage.getItem("dnevnik-school-supplies") ?? "[]"); if(Array.isArray(legacy) && legacy.length) onChangeChecked(legacy.filter((item): item is string => typeof item === "string" && supplies.includes(item))); } catch { /* Legacy checklist remains untouched if unreadable. */ }
     });
-  }, []);
-  const selected = useMemo(() => new Date(`${date}T12:00:00`), [date]);
+  }, [cloudChecked, onChangeChecked]);
+  const selected = useMemo(() => new Date(`${date || isoLocal(new Date())}T12:00:00`), [date]);
   const dayLessons = lessons[selected.getDay()] ?? [];
   const bring = Array.from(new Set(dayLessons.flatMap(item => item.bring ?? [])));
   function move(days: number) { const next = new Date(selected); next.setDate(next.getDate() + days); setDate(isoLocal(next)); }
-  function toggleSupply(item: string) { setChecked(current => { const next = current.includes(item) ? current.filter(value => value !== item) : [...current, item]; localStorage.setItem("dnevnik-school-supplies", JSON.stringify(next)); return next; }); }
+  function toggleSupply(item: string) { onChangeChecked(checked.includes(item) ? checked.filter(value => value !== item) : [...checked, item]); }
 
   return <section className="school-view" aria-labelledby="school-title">
     <header className="screen-header school-header"><div><p className="screen-eyebrow">Богдан</p><h1 className="screen-title" id="school-title">Школа</h1></div><span className="school-mark" aria-hidden="true"><GraduationCap size={28} /></span></header>

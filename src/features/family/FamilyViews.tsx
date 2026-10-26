@@ -137,7 +137,7 @@ export function ImportantDatesView({ dates, events, onChangeDates, onChangeEvent
         <div className="grid gap-2 sm:grid-cols-[1fr_150px_150px_auto]">
           <Input placeholder="У мамы день рождения" value={title} onChange={(event) => setTitle(event.target.value)} />
           <Input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-          <Select value={type} onChange={(event) => setType(event.target.value as ImportantDate["type"])}><option value="birthday">День рождения</option><option value="anniversary">Годовщина</option><option value="custom">Другое</option></Select>
+          <Select aria-label="Тип памятной даты" value={type} onChange={(event) => setType(event.target.value as ImportantDate["type"])}><option value="birthday">День рождения</option><option value="anniversary">Годовщина</option><option value="custom">Другое</option></Select>
           <Button onClick={createDate}><Plus size={18} />Добавить</Button>
         </div>
       </Surface>
@@ -202,7 +202,7 @@ export function DocumentsView({ documents, onChangeDocuments, embedded = false }
       <Surface className="document-actions grid gap-3 p-4">
         <div className="grid gap-2 sm:grid-cols-[1fr_150px_150px_auto]">
           <Input placeholder="Паспорт, страховка, билет" value={title} onChange={(event) => setTitle(event.target.value)} />
-          <Select value={category} onChange={(event) => setCategory(event.target.value as DocumentItem["category"])}><option value="passport">Паспорт</option><option value="insurance">Страховка</option><option value="ticket">Билет</option><option value="certificate">Справка</option><option value="contract">Договор</option><option value="other">Другое</option></Select>
+          <Select aria-label="Категория документа" value={category} onChange={(event) => setCategory(event.target.value as DocumentItem["category"])}><option value="passport">Паспорт</option><option value="insurance">Страховка</option><option value="ticket">Билет</option><option value="certificate">Справка</option><option value="contract">Договор</option><option value="other">Другое</option></Select>
           <OwnerSelect value={owner} onChange={setOwner} />
           <Button onClick={() => addDocument()}><Plus size={18} />Создать</Button>
         </div>
@@ -278,7 +278,7 @@ function FamilyRow({ children, icon, meta, onDelete, title }: { children?: React
 }
 
 function OwnerSelect({ value, onChange }: { value: Owner; onChange: (value: Owner) => void }) {
-  return <Select value={value} onChange={(event) => onChange(event.target.value as Owner)}><option value="me">Моё</option><option value="partner">Партнёра</option><option value="shared">Общее</option></Select>;
+  return <Select aria-label="Владелец" value={value} onChange={(event) => onChange(event.target.value as Owner)}><option value="me">Моё</option><option value="partner">Партнёра</option><option value="shared">Общее</option></Select>;
 }
 
 function ownerLabel(owner: Owner) {

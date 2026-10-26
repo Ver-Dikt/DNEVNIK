@@ -16,6 +16,7 @@ const navItems: Array<{ id: ScreenId; label: string; detail: string; icon: React
   { id: "money", label: "Деньги", detail: "Покупки и бюджет", icon: WalletCards },
   { id: "documents", label: "Документы", detail: "Файлы и карты", icon: FileText },
   { id: "ideas", label: "Идеи", detail: "Мысли и наброски", icon: Lightbulb },
+  { id: "records", label: "Записи и проекты", detail: "Все заметки, проекты и разбор", icon: LayoutGrid },
   { id: "settings", label: "Настройки", detail: "Профили и резервные копии", icon: Settings }
 ];
 
