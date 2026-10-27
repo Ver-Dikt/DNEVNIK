@@ -6,15 +6,17 @@ import { validateAssistantPlan, type AssistantAction, type AssistantPlan } from 
 import { confirmationIntent, conversationHistory, restoreConversation, type ChatMessage } from "@/lib/conversation";
 import { useLocalDictation } from "@/hooks/use-local-dictation";
 import type { DiaryEntry, ProjectNode, Space } from "@/lib/types";
+import { navigationTarget, screenNames } from "@/lib/assistant-navigation";
+import type { ScreenId } from "@/features/app/types";
 
-type Props = { entries: DiaryEntry[]; projects: ProjectNode[]; spaces: Space[]; syncMessage: string; storageScope: string; currentScreen: string; onSync: () => Promise<boolean>; onApply: (plan: AssistantPlan) => Promise<void> };
+type Props = { entries: DiaryEntry[]; projects: ProjectNode[]; spaces: Space[]; syncMessage: string; storageScope: string; currentScreen: string; onNavigate: (screen: ScreenId) => void; onSync: () => Promise<boolean>; onApply: (plan: AssistantPlan) => Promise<void> };
 const subscribe = () => () => {};
 const isLocal = () => ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
 export function LocalAssistant(props: Props) {
   const local = useSyncExternalStore(subscribe, isLocal, () => false);
   return local ? <DiaryConversation {...props} /> : null;
 }
-function DiaryConversation({ entries, projects, spaces, syncMessage, storageScope, currentScreen, onSync, onApply }: Props) {
+function DiaryConversation({ entries, projects, spaces, syncMessage, storageScope, currentScreen, onNavigate, onSync, onApply }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -101,9 +103,11 @@ function DiaryConversation({ entries, projects, spaces, syncMessage, storageScop
       if(requestGeneration!==generation.current) return;
       if(!response.ok) throw new Error(result.error ?? "Не удалось получить ответ");
       const plan=validateAssistantPlan(result.plan,entries,question);
+      const target=navigationTarget(question,result.plan.navigate);
+      if(target) onNavigate(target);
       if(plan.actions.length) add("assistant",plan.answer || "Предлагаю такие изменения. Можно нажать «Применить» или ответить «да».",{plan,state:"pending"});
       else if(plan.sync && /синхрон|обнови.*облак|обнови.*запис/i.test(question)) { const ok=await onSync(); add("assistant",ok ? "Синхронизация с облаком завершена." : "Синхронизация не завершена. Проверьте вход через «Облако» и подключение к интернету."); }
-      else add("assistant",plan.answer || "Не получилось составить ответ. Попробуйте уточнить вопрос.");
+      else add("assistant",target ? `Открываю раздел «${screenNames[target]}».${plan.answer ? ` ${plan.answer}` : ""}` : plan.answer || "Не получилось составить ответ. Попробуйте уточнить вопрос.");
     } catch(error) {
       if(requestGeneration===generation.current) add("assistant",controller.signal.aborted ? "Запрос остановлен. Можно продолжить другим сообщением." : error instanceof Error ? error.message : "Не удалось получить ответ. Попробуйте ещё раз.");
     } finally { if(requestGeneration===generation.current) { setBusy(false); abort.current=null; } }

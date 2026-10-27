@@ -651,7 +651,7 @@ export function DnevnikApp() {
         ) : null}
       </div>
 
-      <LocalAssistant key={cloud.email ?? "local"} entries={data.entries} projects={data.projects} spaces={data.spaces} syncMessage={cloud.message} storageScope={cloud.email ?? "local"} currentScreen={screen} onSync={cloud.saveNow} onApply={applyLocalPlan} />
+      <LocalAssistant key={cloud.email ?? "local"} entries={data.entries} projects={data.projects} spaces={data.spaces} syncMessage={cloud.message} storageScope={cloud.email ?? "local"} currentScreen={screen} onNavigate={navigate} onSync={cloud.saveNow} onApply={applyLocalPlan} />
       <MobileNav active={screen} onChange={navigate} />
       {captureOpen ? <CaptureSheet text={quickText} isListening={isListening} isParsing={isParsing} preview={preview} voiceMessage={voiceMessage} onClose={closeCapture} onTextChange={value => { setQuickText(value); setPreview(null); }} onToggleVoice={toggleVoice} onParse={() => void parseText()} onSaveAll={() => savePreview()} onEditPreview={setEditingPreviewIndex} onRemovePreview={removePreviewItem} /> : null}
       {editingPreviewIndex !== null && preview?.items[editingPreviewIndex] ? (
