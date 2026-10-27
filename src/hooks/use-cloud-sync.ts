@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { encodeBackupFiles } from "@/lib/backup-files";
 import { cloudKnownState, mergeCloudSnapshots, prepareLocalSnapshot, sameSnapshotContent, type CloudKnownState } from "@/lib/cloud-merge";
 import { createSupabaseBrowserClient } from "@/lib/supabase";
-import { commitCloudSnapshot } from "@/lib/cloud-sync";
+import { commitCloudSnapshot, needsCloudFollowup } from "@/lib/cloud-sync";
 
 type ExportData = () => Promise<Record<string, unknown>>;
 type ImportData = (input: unknown) => Promise<boolean>;
@@ -45,7 +45,8 @@ export function useCloudSync({ ready, exportData, importData }: { ready: boolean
       const rebased = mergeCloudSnapshots(prepareLocalSnapshot(latestLocal, cloudKnownState(local), now), merged, now);
       const encodedMerged = await encodeBackupFiles(rebased);
       const encodedLocal = await encodeBackupFiles(latestLocal);
-      if (!isRecord(encodedMerged) || !isRecord(encodedLocal)) throw new Error("Cloud snapshot encoding failed");
+      const encodedCommitted = await encodeBackupFiles(merged);
+      if (!isRecord(encodedMerged) || !isRecord(encodedLocal) || !isRecord(encodedCommitted)) throw new Error("Cloud snapshot encoding failed");
       if (!isCurrent()) return false;
       if (!sameSnapshotContent(encodedLocal, encodedMerged)) {
         const imported = await latestImportRef.current(rebased);
@@ -53,6 +54,12 @@ export function useCloudSync({ ready, exportData, importData }: { ready: boolean
       }
       saveKnownState(user.id, cloudKnownState(merged));
       initializedUserRef.current = user.id;
+      if (needsCloudFollowup(encodedMerged, encodedCommitted)) {
+        pendingSyncRef.current = true;
+        setState("saving");
+        setMessage("Появились новые изменения. Продолжаю синхронизацию…");
+        return false;
+      }
       setState("synced");
       setMessage("Изменения сохранены в Supabase. Другие устройства получат их при подключении.");
       return true;

@@ -31,6 +31,10 @@ html[data-theme] :is(.surface, .entry-card, .school-quick-link) { background: va
 html[data-theme] :is(.button-plain, .input) { background: var(--surface-soft); }
 .surface { backdrop-filter: none; }
 html[data-theme] :is(.app-sidebar, .app-mobile-nav, .global-search, .cloud-button) { background: var(--glass); backdrop-filter: blur(24px) saturate(1.25); -webkit-backdrop-filter: blur(24px) saturate(1.25); border: 1px solid var(--subtle-line); box-shadow: var(--shadow); }
+html[data-theme] .diary-chat { background: var(--glass); backdrop-filter: blur(26px) saturate(1.3); -webkit-backdrop-filter: blur(26px) saturate(1.3); border: 1px solid var(--subtle-line); box-shadow: var(--shadow); }
+html[data-theme] :is(.entry-card, .button, .icon-control, .sidebar-item) { transition: transform .16s ease, background-color .16s ease, border-color .16s ease, box-shadow .16s ease; }
+@media (hover: hover) { html[data-theme] :is(.entry-card, .button:not(:disabled), .icon-control:not(:disabled)):hover { transform: translateY(-1px); } }
+@media (prefers-reduced-motion: reduce) { html[data-theme] :is(.entry-card, .button, .icon-control, .sidebar-item) { transition: none; } html[data-theme] :is(.entry-card, .button, .icon-control):hover { transform: none; } }
 .app-sidebar { padding: var(--s4); gap: var(--s1); border-radius: 28px; }
 .sidebar-brand { padding: var(--s4) var(--s2) var(--s6); }
 .sidebar-brand strong { font-size: 18px; font-weight: 720; letter-spacing: -.025em; }

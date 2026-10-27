@@ -4,6 +4,11 @@ import { mergeCloudSnapshots, prepareLocalSnapshot, sameSnapshotContent, type Cl
 
 type Snapshot = Record<string, unknown>;
 
+/** A local edit made while a request was in flight needs another upload. */
+export function needsCloudFollowup(rebased: Snapshot, committed: Snapshot): boolean {
+  return !sameSnapshotContent(rebased, committed) || !sameSnapshotContent({ metadata: rebased.sync }, { metadata: committed.sync });
+}
+
 /** Compare-and-swap prevents two devices from overwriting the same snapshot. */
 export async function commitCloudSnapshot(client: SupabaseClient, userId: string, getLocal: () => Promise<Snapshot>, known: CloudKnownState | null, isCurrent: () => boolean) {
   for (let attempt = 0; attempt < 3; attempt++) {

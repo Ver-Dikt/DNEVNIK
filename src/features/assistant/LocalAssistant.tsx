@@ -8,15 +8,16 @@ import { useLocalDictation } from "@/hooks/use-local-dictation";
 import type { DiaryEntry, ProjectNode, Space } from "@/lib/types";
 import { navigationTarget, screenNames } from "@/lib/assistant-navigation";
 import type { ScreenId } from "@/features/app/types";
+import { selectAssistantContext, type AssistantExtras } from "@/lib/assistant-context";
 
-type Props = { entries: DiaryEntry[]; projects: ProjectNode[]; spaces: Space[]; syncMessage: string; storageScope: string; currentScreen: string; onNavigate: (screen: ScreenId) => void; onSync: () => Promise<boolean>; onApply: (plan: AssistantPlan) => Promise<void> };
+type Props = { entries: DiaryEntry[]; projects: ProjectNode[]; spaces: Space[]; extras: AssistantExtras; syncMessage: string; storageScope: string; currentScreen: string; onNavigate: (screen: ScreenId) => void; onOpenEntry: (id: string) => void; onSync: () => Promise<boolean>; onApply: (plan: AssistantPlan) => Promise<void> };
 const subscribe = () => () => {};
 const isLocal = () => ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
 export function LocalAssistant(props: Props) {
   const local = useSyncExternalStore(subscribe, isLocal, () => false);
   return local ? <DiaryConversation {...props} /> : null;
 }
-function DiaryConversation({ entries, projects, spaces, syncMessage, storageScope, currentScreen, onNavigate, onSync, onApply }: Props) {
+function DiaryConversation({ entries, projects, spaces, extras, syncMessage, storageScope, currentScreen, onNavigate, onOpenEntry, onSync, onApply }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const [loaded, setLoaded] = useState(false);
@@ -96,15 +97,16 @@ function DiaryConversation({ entries, projects, spaces, syncMessage, storageScop
     setMessages(current=>current.map(item=>item.state==="pending" ? {...item,state:"dismissed"} : item));
     add("user",question);
     try {
-      if(entries.length>150) throw new Error("В ежедневнике больше 150 записей: контекст этого чата пока ограничен 150 записями.");
-      const context=entries.map(({id,title,kind,status,area,dueDate,projectPath,assignedTo,priority,revision,updatedAt,needsReview,description,notes,purchase,wish})=>({id,title,kind,status,area,dueDate,projectPath,assignedTo,priority,revision,updatedAt,needsReview,description:description?.slice(0,220),notes:notes?.slice(0,180),...(purchase ? {purchase:{quantity:purchase.quantity,totalPrice:purchase.totalPrice,unitPrice:purchase.unitPrice,currency:purchase.currency,status:purchase.status}} : {}),...(wish ? {wish:{status:wish.status,estimatedPrice:wish.estimatedPrice,currency:wish.currency}} : {})}));
-      const response=await fetch("/api/local-ai",{method:"POST",headers:{"content-type":"application/json"},signal:controller.signal,body:JSON.stringify({action:"conversation",text:question,history,context,projects:projects.map(({id,name,area,parentId})=>({id,name,area,parentId})),spaces:spaces.map(({id,name})=>({id,name})),currentScreen})});
+      const selected=selectAssistantContext({entries,projects,spaces,...extras},question);
+      const response=await fetch("/api/local-ai",{method:"POST",headers:{"content-type":"application/json"},signal:controller.signal,body:JSON.stringify({action:"conversation",text:question,history,context:selected.entries.items,diaryContext:selected,projects:selected.projects.items,spaces:selected.spaces.items,currentScreen})});
       const result=await response.json();
       if(requestGeneration!==generation.current) return;
       if(!response.ok) throw new Error(result.error ?? "Не удалось получить ответ");
       const plan=validateAssistantPlan(result.plan,entries,question);
       const target=navigationTarget(question,result.plan.navigate);
       if(target) onNavigate(target);
+      const requestedEntry = typeof result.plan.openEntry === "string" && /(?:открой|покажи\s+(?:мне\s+)?(?:запись|карточку))/iu.test(question) && !/(?:как|не открывай|не надо)/iu.test(question) ? entries.find(entry => entry.id === result.plan.openEntry) : undefined;
+      if(requestedEntry) onOpenEntry(requestedEntry.id);
       if(plan.actions.length) add("assistant",plan.answer || "Предлагаю такие изменения. Можно нажать «Применить» или ответить «да».",{plan,state:"pending"});
       else if(plan.sync && /синхрон|обнови.*облак|обнови.*запис/i.test(question)) { const ok=await onSync(); add("assistant",ok ? "Синхронизация с облаком завершена." : "Синхронизация не завершена. Проверьте вход через «Облако» и подключение к интернету."); }
       else add("assistant",target ? `Открываю раздел «${screenNames[target]}».${plan.answer ? ` ${plan.answer}` : ""}` : plan.answer || "Не получилось составить ответ. Попробуйте уточнить вопрос.");

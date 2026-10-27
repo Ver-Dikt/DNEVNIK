@@ -1,4 +1,4 @@
-const CACHE_NAME = "dnevnik-v25-assistant-navigation";
+const CACHE_NAME = "dnevnik-v26-assistant-context";
 const scopePath = new URL(self.registration.scope).pathname;
 const BASE_PATH = scopePath.endsWith("/") ? scopePath.slice(0, -1) : scopePath;
 const APP_SHELL = [

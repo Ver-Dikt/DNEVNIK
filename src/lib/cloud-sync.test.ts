@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
-import { commitCloudSnapshot } from "./cloud-sync";
-import { cloudKnownState } from "./cloud-merge";
+import { commitCloudSnapshot, needsCloudFollowup } from "./cloud-sync";
+import { cloudKnownState, mergeCloudSnapshots, prepareLocalSnapshot } from "./cloud-merge";
 
 const first = { id: "phone", title: "Телефон", updatedAt: "2026-10-25T10:00:00.000Z" };
 const second = { id: "computer", title: "Компьютер", updatedAt: "2026-10-26T10:00:00.000Z" };
@@ -34,6 +34,16 @@ function fakeClient(conflict = false) {
 }
 
 describe("cloud compare-and-swap", () => {
+  it("schedules another upload when a local edit arrives during the first upload", async () => {
+    const mock = fakeClient();
+    const committed = await commitCloudSnapshot(mock.client,"user",async()=>({entries:[second]}),null,()=>true);
+    const later = {id:"during-sync",title:"Новое",updatedAt:"2026-10-27T10:00:00.000Z"};
+    const rebased = mergeCloudSnapshots(prepareLocalSnapshot({entries:[second,later]}, cloudKnownState(committed.local), "2026-10-27T10:00:01.000Z"),committed.merged,"2026-10-27T10:00:01.000Z");
+    expect(needsCloudFollowup(rebased,committed.merged)).toBe(true);
+    const final = await commitCloudSnapshot(mock.client,"user",async()=>rebased,cloudKnownState(committed.merged),()=>true);
+    expect((final.merged.entries as Array<{id:string}>).map(item=>item.id)).toContain("during-sync");
+    expect(needsCloudFollowup(final.merged,final.merged)).toBe(false);
+  });
   it("does not rewrite an unchanged snapshot on every poll", async () => {
     const mock = fakeClient();
     const first = await commitCloudSnapshot(mock.client,"user",async()=>({entries:[second]}),null,()=>true);
