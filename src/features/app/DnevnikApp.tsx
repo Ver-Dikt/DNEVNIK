@@ -121,7 +121,6 @@ export function DnevnikApp() {
       setQuickText(data.draft?.quickText ?? "");
       setPreview(data.previewState?.preview ?? null);
       setPlanMode(data.settings.planMode ?? "day");
-      if (data.draft?.quickText || data.previewState?.preview) setCaptureOpen(true);
       recoveryAppliedRef.current = true;
     });
   }, [data.draft, data.previewState, data.settings.planMode, dbReady]);
@@ -607,17 +606,17 @@ export function DnevnikApp() {
   }
 
   return (
-    <main className="mx-auto grid min-h-screen w-full max-w-7xl gap-5 px-4 pb-28 pt-4 md:grid-cols-[240px_minmax(0,1fr)] md:px-6 md:pb-8">
+    <main className="diary-layout mx-auto grid min-h-screen w-full max-w-7xl gap-5 px-4 pb-28 pt-4 md:grid-cols-[240px_minmax(0,1fr)] md:px-6 md:pb-8">
       <DesktopNav active={screen} onChange={navigate} />
       <div className="min-w-0">
         <div className="app-toolbar">
           <div className="global-search"><Search size={19} aria-hidden="true" /><input ref={searchRef} aria-label="Поиск по всем записям" title="Поиск · Ctrl K" placeholder="Найти запись…" value={search} onChange={event => setSearch(event.target.value)} />{search ? <button type="button" aria-label="Очистить поиск" className="icon-control" onClick={() => { setSearch(""); searchRef.current?.focus(); }}><X size={16} /></button> : null}</div>
           <CloudSyncButton email={cloud.email} state={cloud.state} message={cloud.message} onAuthenticate={cloud.authenticate} onSignOut={cloud.signOut} onSync={cloud.saveNow} />
-          <Button onClick={() => { setReparseId(null); setCaptureOpen(true); }} variant="primary" aria-label="Быстрый ввод: текст или голос" title="Добавить · Ctrl Enter"><Mic size={19} />Добавить</Button>
+          <Button onClick={() => { setReparseId(null); setCaptureOpen(true); }} variant="primary" aria-label="Быстрый ввод: текст или голос" title="Добавить · Ctrl Enter"><Mic size={19} />{quickText.trim() || preview ? "Продолжить" : "Добавить"}</Button>
         </div>
         {search.trim() ? <Surface className="search-results" aria-label="Результаты поиска"><p className="px-3 py-2 text-sm text-[var(--muted)]">{searchResults.length ? "Найдено: " + searchResults.length : "Ничего не найдено. Попробуйте другое слово."}</p>{searchResults.slice(0, 50).map(entry => <button type="button" className="search-result" key={entry.id} onClick={() => setDetailId(entry.id)}><b>{entry.title}</b><span>{entry.area ?? "Личное"} · {kindLabels[entry.kind] ?? "Запись"}</span></button>)}{searchResults.length > 50 ? <p className="p-3 text-sm text-[var(--muted)]">Показаны первые 50 записей. Уточните поиск.</p> : null}</Surface> : null}
         {data.status.warning ? <Surface className="mb-4 p-3 text-sm text-[#a15c00]">{data.status.warning}</Surface> : null}
-        <LocalAssistant entries={data.entries} projects={data.projects} spaces={data.spaces} syncMessage={cloud.message} onSync={cloud.saveNow} onApply={applyLocalPlan} onOrganize={organizeAll} onProposal={proposal => { setReparseId(null); setQuickText(proposal.rawText); setPreview(proposal); setCaptureOpen(true); }} />
+
         {screen === "records" ? <RecordsView entries={data.entries} projects={data.projects} spaces={data.spaces} members={data.members} onOpen={entry => setDetailId(entry.id)} onComplete={completeEntry} onAdd={() => createManualEntry("note")} onOrganize={organizeAll} onCreateProject={path => { const result = ensureProjectPath(path, data.projects, data.spaces); data.setProjects(result.projects); }} /> : null}
         {screen === "plan" ? (
           <PlanView calendarEvents={data.calendarEvents} entries={data.entries} importantDates={data.importantDates} members={data.members} planTransactions={data.planTransactions} sharedPlans={data.sharedPlans} spaces={data.spaces} ownerFilter={ownerFilter} mode={planMode} selectedDate={selectedDate} onModeChange={setMode} onDateChange={setSelectedDate} onOwnerFilterChange={setOwnerFilter} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} onAdd={() => createManualEntry("task", { dueDate: selectedDate, schedule: "today", assignedTo: ownerFilter, visibility: ownerFilter === "shared" ? "shared" : "private" })} />
@@ -648,10 +647,11 @@ export function DnevnikApp() {
           <IdeasView entries={data.entries} members={data.members} spaces={data.spaces} onAdd={() => createManualEntry("idea")} onComplete={completeEntry} onOpen={(entry) => setDetailId(entry.id)} />
         ) : null}
         {screen === "settings" ? (
-          <SettingsView importantDates={data.importantDates} members={data.members} settings={data.settings} onChangeImportantDates={data.setImportantDates} onChangeMembers={data.setMembers} onChangeSettings={data.setSettings} onClearAll={() => { if (window.confirm("Удалить все данные ежедневника? Перед этим сохраните экспорт JSON.")) { keepListeningRef.current = false; recognitionRef.current?.abort(); setIsListening(false); setQuickText(""); setPreview(null); setLearnedRules([]); setDetailId(null); setCaptureOpen(false); setToast(null); latestTextRef.current = ""; voiceBaseRef.current = ""; data.clearEverything(); } }} onClearEntries={() => { if (window.confirm("Удалить все записи? Перед этим сохраните экспорт JSON.")) data.clearEntries(); }} onExport={exportData} onDownloadRecovery={downloadManagementBackup} onImport={importData} />
+          <SettingsView importantDates={data.importantDates} members={data.members} settings={data.settings} onChangeImportantDates={data.setImportantDates} onChangeMembers={data.setMembers} onChangeSettings={data.setSettings} onClearAll={() => { if (window.confirm("Удалить все данные ежедневника? Перед этим сохраните экспорт JSON.")) { keepListeningRef.current = false; recognitionRef.current?.abort(); setIsListening(false); setQuickText(""); setPreview(null); setLearnedRules([]); setDetailId(null); setCaptureOpen(false); setToast(null); latestTextRef.current = ""; voiceBaseRef.current = ""; data.clearEverything(); window.dispatchEvent(new Event("dnevnik:reset-chat")); } }} onClearEntries={() => { if (window.confirm("Удалить все записи? Перед этим сохраните экспорт JSON.")) data.clearEntries(); }} onExport={exportData} onDownloadRecovery={downloadManagementBackup} onImport={importData} />
         ) : null}
       </div>
 
+      <LocalAssistant key={cloud.email ?? "local"} entries={data.entries} projects={data.projects} spaces={data.spaces} syncMessage={cloud.message} storageScope={cloud.email ?? "local"} currentScreen={screen} onSync={cloud.saveNow} onApply={applyLocalPlan} />
       <MobileNav active={screen} onChange={navigate} />
       {captureOpen ? <CaptureSheet text={quickText} isListening={isListening} isParsing={isParsing} preview={preview} voiceMessage={voiceMessage} onClose={closeCapture} onTextChange={value => { setQuickText(value); setPreview(null); }} onToggleVoice={toggleVoice} onParse={() => void parseText()} onSaveAll={() => savePreview()} onEditPreview={setEditingPreviewIndex} onRemovePreview={removePreviewItem} /> : null}
       {editingPreviewIndex !== null && preview?.items[editingPreviewIndex] ? (

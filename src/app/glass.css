@@ -48,6 +48,7 @@ html[data-theme] :is(.app-sidebar, .app-mobile-nav, .global-search, .cloud-butto
 .button, .icon-control { min-height: 44px; border-radius: var(--radius-control); font-weight: 620; }
 html[data-theme] .button-primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); box-shadow: 0 5px 14px rgba(40, 90, 196, .2); }
 html[data-theme] .button-primary:hover:not(:disabled) { background: var(--primary-hover); }
+html[data-theme] .button-danger { color: var(--danger); background: var(--solid-surface); border-color: var(--danger); }
 .button-plain { border: 1px solid var(--subtle-line); }
 .input { min-height: 48px; border-color: var(--line); border-radius: var(--radius-control); font-size: 16px; }
 .input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -164,3 +165,50 @@ html[data-theme] .app-dialog { background: var(--solid-surface); }
   html[data-theme] :is(.surface, .app-sidebar, .app-mobile-nav, .global-search, .cloud-button) { background: var(--solid-surface); backdrop-filter: none; -webkit-backdrop-filter: none; border-color: var(--line); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
+
+/* The conversation shares the diary's workspace instead of opening a modal. */
+.diary-chat { position: fixed; right: var(--s4); bottom: 92px; z-index: 45; width: min(420px, calc(100vw - 32px)); border: 1px solid var(--line); border-radius: 24px; background: var(--solid-surface); color: var(--foreground); box-shadow: var(--shadow); overflow: hidden; }
+.diary-chat-header { display: flex; align-items: center; justify-content: space-between; gap: var(--s2); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--subtle-line); }
+.diary-chat-title { display: flex; align-items: center; gap: var(--s3); min-width: 0; }
+.diary-chat-title > svg { color: var(--accent); flex-shrink: 0; }
+.diary-chat-title h2 { font-size: 16px; font-weight: 650; letter-spacing: -.02em; }
+.diary-chat-title p { margin-top: 3px; font-size: 12px; color: var(--muted); }
+.diary-chat-body { display: none; min-height: 0; grid-template-rows: minmax(0,1fr) auto; }
+.diary-chat.is-expanded .diary-chat-body { display: grid; height: min(66dvh, 700px); }
+.diary-chat-log { overflow-y: auto; overscroll-behavior: contain; min-height: 0; padding: var(--s4); display: flex; flex-direction: column; gap: var(--s4); scrollbar-gutter: stable; }
+.diary-chat-log:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.chat-welcome { margin-block: auto; padding-block: var(--s5); }
+.chat-welcome > span { display: grid; place-items: center; width: 60px; height: 60px; border-radius: 20px; background: var(--accent-soft); color: var(--accent); margin-bottom: var(--s4); }
+.chat-welcome h3 { font-size: 23px; letter-spacing: -.03em; font-weight: 600; }
+.chat-welcome p { font-size: 14px; line-height: 1.65; color: var(--muted); margin-block: var(--s3) var(--s5); }
+.chat-welcome > div { display: grid; gap: var(--s2); }
+.chat-welcome button { min-height: 44px; border: 1px solid var(--line); background: var(--surface-soft); border-radius: 14px; padding: var(--s3); text-align: left; font-size: 14px; }
+.chat-message { align-self: flex-start; max-width: 100%; background: var(--surface-soft); border-radius: 18px 18px 18px 4px; padding: var(--s3) var(--s4); overflow-wrap: anywhere; }
+.chat-message.is-user { align-self: flex-end; background: var(--primary); color: var(--on-primary); border-radius: 18px 18px 4px 18px; }
+.chat-speaker { display: block; font-size: 12px; font-weight: 650; margin-bottom: var(--s2); }
+.chat-message > p { white-space: pre-wrap; line-height: 1.65; font-size: 14px; }
+.chat-plan { display: grid; gap: var(--s3); margin-top: var(--s4); border-top: 1px solid var(--line); padding-top: var(--s3); }
+.chat-plan > div { font-size: 14px; line-height: 1.6; }
+.chat-plan small { color: var(--muted); font-size: 12px; }
+.chat-plan-actions { display: flex; flex-wrap: wrap; gap: var(--s2); }
+.chat-thinking { font-size: 14px; color: var(--muted); padding-inline: var(--s2); }
+.diary-chat-composer { border-top: 1px solid var(--subtle-line); padding: var(--s3) var(--s4); background: var(--solid-surface); }
+.diary-chat-composer textarea { min-height: 82px; max-height: 180px; resize: vertical; }
+.chat-compose-actions { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); }
+.chat-compose-actions > span { font-size: 12px; color: var(--muted); flex: 1; }
+.chat-send { min-width: 44px; min-height: 44px; border-radius: 50%; background: var(--primary); color: var(--on-primary); display: grid; place-items: center; }
+.chat-send:disabled { opacity: .45; cursor: default; }
+.chat-compose-actions .is-recording { background: var(--accent-soft); color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.chat-details { color: var(--muted); font-size: 12px; margin-top: var(--s2); }
+.chat-details summary { cursor: pointer; padding-block: var(--s2); }
+.chat-details p { margin-block: var(--s2); line-height: 1.55; }
+.chat-error { font-size: 13px; color: var(--foreground); border-left: 3px solid var(--accent); padding-left: var(--s3); margin-bottom: var(--s3); }
+.chat-error .button { margin-top: var(--s2); }
+@media (min-width: 768px) and (max-width: 1199px) { .diary-chat { bottom: var(--s4); } .diary-layout:has(.diary-chat) { padding-bottom: calc(var(--s8) * 3 + var(--s5)); } }
+@media (min-width: 1200px) {
+  .diary-layout:has(.diary-chat) { max-width: 1680px; grid-template-columns: 224px minmax(0,1fr) 360px; }
+  .diary-chat { position: sticky; top: var(--s4); right: auto; bottom: auto; width: 100%; height: calc(100dvh - 32px); display: grid; grid-template-rows: auto minmax(0,1fr); box-shadow: var(--shadow); }
+  .diary-chat-body, .diary-chat.is-expanded .diary-chat-body { display: grid; height: auto; }
+  .chat-collapse { display: none; }
+}
+@media (max-width: 767px) { .diary-layout:has(.diary-chat) { padding-bottom: 192px; } .diary-chat.is-expanded .diary-chat-body { height: min(65dvh, calc(100dvh - 190px)); } }

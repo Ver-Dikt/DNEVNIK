@@ -1,96 +1,140 @@
 "use client";
-import { Bot, Mic, X } from "lucide-react";
+import { ArrowUp, Bot, ChevronDown, MessageCircle, Mic, Square, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Button, Field, Select, Surface, Textarea } from "@/components/ui/native";
-import { useModalLayer } from "@/hooks/use-modal-layer";
-import { validateAssistantPlan, type AssistantPlan } from "@/lib/assistant-actions";
-import type { AIParseResult, DiaryEntry, ProjectNode, Space } from "@/lib/types";
+import { Button, Textarea } from "@/components/ui/native";
+import { validateAssistantPlan, type AssistantAction, type AssistantPlan } from "@/lib/assistant-actions";
+import { confirmationIntent, conversationHistory, restoreConversation, type ChatMessage } from "@/lib/conversation";
+import type { DiaryEntry, ProjectNode, Space } from "@/lib/types";
 
-type Props = { entries: DiaryEntry[]; projects: ProjectNode[]; spaces: Space[]; syncMessage: string; onSync: () => Promise<boolean>; onApply: (plan: AssistantPlan) => Promise<void>; onOrganize: () => Promise<void>; onProposal: (proposal: AIParseResult) => void };
+type Props = { entries: DiaryEntry[]; projects: ProjectNode[]; spaces: Space[]; syncMessage: string; storageScope: string; currentScreen: string; onSync: () => Promise<boolean>; onApply: (plan: AssistantPlan) => Promise<void> };
 const subscribe = () => () => {};
 const isLocal = () => ["127.0.0.1", "localhost", "[::1]"].includes(location.hostname);
 export function LocalAssistant(props: Props) {
-  const [open, setOpen] = useState(false);
   const local = useSyncExternalStore(subscribe, isLocal, () => false);
-  if (!local) return null;
-  return <><div className="assistant-toolbar"><Button onClick={() => setOpen(true)}><Bot size={18} />Локальный помощник</Button></div>{open ? <AssistantDialog {...props} onClose={() => setOpen(false)} onProposal={proposal => { setOpen(false); props.onProposal(proposal); }} /> : null}</>;
+  return local ? <DiaryConversation {...props} /> : null;
 }
-function AssistantDialog({ entries, projects, spaces, syncMessage, onSync, onApply, onOrganize, onProposal, onClose }: Props & { onClose: () => void }) {
-  const root = useRef<HTMLDivElement>(null);
+function DiaryConversation({ entries, projects, spaces, syncMessage, storageScope, currentScreen, onSync, onApply }: Props) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [text, setText] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [error, setError] = useState("");
   const abort = useRef<AbortController | null>(null);
   const speech = useRef<InstanceType<NonNullable<Window["SpeechRecognition"]>> | null>(null);
-  const [listening, setListening] = useState(false);
-  const [models, setModels] = useState<string[]>([]);
-  const [model, setModel] = useState("");
-  const [text, setText] = useState("");
-  const [scope, setScope] = useState("all");
-  const [history, setHistory] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
-  const [busy, setBusy] = useState(false);
-  const [plan, setPlan] = useState<AssistantPlan | null>(null);
-  const [message, setMessage] = useState("Проверяю локальную модель…");
-  useModalLayer(root, onClose);
-  async function check() {
+  const voiceText = useRef("");
+  const sendAfterVoice = useRef(false);
+  const generation = useRef(0);
+  const sendRef = useRef<(value: string, voice?: boolean) => void>(() => undefined);
+  const log = useRef<HTMLDivElement>(null);
+  const storageKey = `dnevnik.chat.v1.${encodeURIComponent(storageScope)}`;
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if(cancelled) return;
+      try { const value = JSON.parse(localStorage.getItem(storageKey) ?? "{}"); setMessages(restoreConversation(value.messages)); setText(typeof value.draft === "string" ? value.draft.slice(0,12000) : ""); } catch { /* An invalid chat does not affect diary data. */ }
+      setLoaded(true);
+    });
+    const reset = () => { generation.current++; sendAfterVoice.current=false; abort.current?.abort(); speech.current?.abort(); setBusy(false); setMessages([]); setText(""); };
+    window.addEventListener("dnevnik:reset-chat",reset);
+    return () => { cancelled = true; window.removeEventListener("dnevnik:reset-chat",reset); sendAfterVoice.current = false; speech.current?.abort(); abort.current?.abort(); };
+  }, [storageKey]);
+  useEffect(() => {
+    if(!loaded) return;
+    try { localStorage.setItem(storageKey,JSON.stringify({ messages: messages.slice(-40).map(({id,role,text,state})=>({id,role,text,state})),draft:text })); } catch { /* The diary and the visible chat still work if storage is full. */ }
+  }, [messages,text,loaded,storageKey]);
+  useEffect(() => { log.current?.scrollTo({top:log.current.scrollHeight}); }, [messages,busy,expanded]);
+  async function connect() {
     try {
-      const response = await fetch("/api/local-ai", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "status" }) });
+      const response = await fetch("/api/local-ai",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"status"})});
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
-      setModels(result.models); setModel(result.models.find((name: string) => name === "qwen2.5-coder:7b") ?? result.models[0] ?? "");
-      setMessage(result.models.length ? "Создание, перенос, редактирование, завершение записей и вложенные проекты. Изменения сначала показываются для проверки." : "В Ollama нет установленных локальных моделей.");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Не удалось подключиться к Ollama"); }
+      if(!response.ok || !result.conversationReady) throw new Error(result.error ?? "Не удалось подключить Qwen3.5:9b. Откройте ежедневник компьютерным ярлыком.");
+      setReady(true); setError("");
+    } catch(error) { setReady(false); setError(error instanceof Error ? error.message : "Нет связи с локальной моделью"); }
   }
-  useEffect(() => { queueMicrotask(() => { void check(); }); return () => { abort.current?.abort(); speech.current?.abort(); }; }, []);
-  function dictate() {
-    if (speech.current) { speech.current.stop(); return; }
-    const Recognition = window.SpeechRecognition ?? window.webkitSpeechRecognition;
-    if (!Recognition) { setMessage("Голосовой ввод не поддерживается этим браузером. Используйте Chrome или введите команду текстом."); return; }
-    const recognition = new Recognition();
-    recognition.lang = "ru-RU"; recognition.continuous = true; recognition.interimResults = true;
-    const base = text.trim();
-    recognition.onresult = event => { setText([base, Array.from(event.results).map(item => item[0].transcript).join(" ")].filter(Boolean).join(" ")); setPlan(null); };
-    recognition.onstart = () => setListening(true);
-    recognition.onend = () => { speech.current = null; setListening(false); };
-    recognition.onerror = event => setMessage(event.error === "not-allowed" ? "Разрешите микрофон в браузере для голосового управления." : "Распознавание остановлено. Текст остался в поле ввода.");
-    speech.current = recognition;
-    try { recognition.start(); } catch { speech.current = null; setListening(false); setMessage("Не удалось запустить микрофон"); }
+  useEffect(() => { queueMicrotask(()=>{void connect();}); }, []);
+  useEffect(() => { sendRef.current=(value,voice)=>{void send(value,voice);}; });
+  function add(role: ChatMessage["role"], value: string, extra: Partial<ChatMessage> = {}) {
+    const message={id:crypto.randomUUID(),role,text:value,...extra};
+    setMessages(current=>[...current.slice(-39),message]);
+    return message;
   }
-  async function send(action: "chat" | "parse" | "manage", suppliedText = text) {
-    if (!suppliedText.trim() || !model || busy || listening) return;
-    const question = suppliedText.trim();
-    const controller = new AbortController(); abort.current = controller; setBusy(true); setPlan(null); setMessage("Модель обрабатывает запрос на этом компьютере…");
+  async function apply(message: ChatMessage) {
+    if(!message.plan || busy || message.state !== "pending") return;
+    setBusy(true); setError("");
     try {
-      const selected = entries.filter(entry => scope === "all" || entry.area === scope);
-      if(selected.length > 150) throw new Error("Выберите отдельный раздел: в одном запросе доступно до 150 записей");
-      const context = selected.map(({ id, title, kind, status, area, dueDate, projectPath, assignedTo, priority, revision, description }) => ({ id, title, kind, status, area, dueDate, projectPath, assignedTo, priority, revision, description: description?.slice(0, 500) }));
-      const response = await fetch("/api/local-ai", { method: "POST", headers: { "content-type": "application/json" }, signal: controller.signal, body: JSON.stringify({ action, model, text: question, context, projects: projects.map(({ id, name, area, parentId }) => ({ id, name, area, parentId })), spaces: spaces.map(({ id, name }) => ({ id, name })), history }) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
-      if (action === "parse") { onProposal(result.proposal); return; }
-      if (action === "manage") { const proposed = validateAssistantPlan(result.plan, entries, question); setPlan(proposed); setMessage(proposed.actions.length ? "Проверьте план. До нажатия «Применить изменения» записи не изменятся." : proposed.answer); return; }
-      setHistory(current => [...current.slice(-10), { role: "user", content: question }, { role: "assistant", content: result.answer }]); setText(""); setMessage("Ответ готов");
-    } catch (error) { setMessage(controller.signal.aborted ? "Запрос остановлен" : error instanceof Error ? error.message : "Не удалось получить ответ"); }
-    finally { setBusy(false); abort.current = null; }
-  }
-  async function perform(action: "apply" | "sync" | "organize") {
-    if(busy) return;
-    setBusy(true);
-    try {
-      if(action === "sync") setMessage(await onSync() ? "Синхронизация завершена" : "Синхронизация не завершена. Проверьте вход через «Облако» и интернет.");
-      else if(action === "organize") { await onOrganize(); setPlan(null); setMessage("Проекты упорядочены по сохранённым путям. Исходные тексты и категории сохранены."); }
-      else if(plan) { await onApply(plan); setPlan(null); setText(""); setMessage("Изменения сохранены на устройстве. Подключённая синхронизация отправит их в Supabase."); }
-    } catch(error) { setMessage(error instanceof Error ? error.message : "Не удалось выполнить действие"); }
+      await onApply(message.plan);
+      setMessages(current=>current.map(item=>item.id===message.id ? {...item,state:"applied"} : item));
+      add("assistant","Готово, изменения сохранены в ежедневнике. Подключённая автосинхронизация передаст их в облако.");
+    } catch(error) { setError(error instanceof Error ? error.message : "Не удалось сохранить изменения"); }
     finally { setBusy(false); }
   }
-  const summary = (patch: Partial<DiaryEntry>) => Object.entries(patch).filter(([key]) => ["title","kind","area","projectPath","status","priority","assignedTo","dueDate","notes","description"].includes(key)).map(([key,value]) => `${({title:"Название",kind:"Тип",area:"Раздел",projectPath:"Проект",status:"Статус",priority:"Приоритет",assignedTo:"Кому",dueDate:"Дата",notes:"Заметки",description:"Описание"} as Record<string,string>)[key]}: ${Array.isArray(value) ? value.join(" / ") : value ?? "убрать"}`).join(" · ");
-  return <div ref={root} className="app-overlay z-[80]" onClick={onClose}><Surface role="dialog" aria-modal="true" aria-label="Локальный помощник" className="app-dialog assistant-dialog" onClick={event => event.stopPropagation()}>
-    <div className="dialog-heading"><div><p className="screen-eyebrow">Управление ежедневником</p><h2>Локальный помощник</h2></div><button type="button" className="icon-control" aria-label="Закрыть помощника" onClick={onClose}><X size={20} /></button></div>
-    <p role="status" className="assistant-message">{message}</p><p className="text-sm text-[var(--muted)]">{syncMessage || "Облако: откройте кнопку синхронизации для входа"}</p>
-    <div className="assistant-controls"><div className="grid gap-3 sm:grid-cols-2"><Field label="Установленная модель"><Select value={model} onChange={event => setModel(event.target.value)} disabled={busy || !models.length}>{!models.length ? <option value="">Модель не найдена</option> : models.map(name => <option key={name}>{name}</option>)}</Select></Field><Field label="Контекст"><Select value={scope} disabled={busy} onChange={event => { setScope(event.target.value); setPlan(null); }}><option value="all">Все мои записи</option>{[...new Set(entries.map(entry => entry.area).filter(Boolean))].map(area => <option key={area}>{area}</option>)}</Select></Field></div>
-    <div className="assistant-chat" aria-live="polite">{history.map((entry,index) => <p className={entry.role} key={index}><b>{entry.role === "user" ? "Вы" : "Помощник"}</b><br />{entry.content}</p>)}</div>
-    <Field label="Команда текстом или голосом"><Textarea aria-label="Сообщение помощнику" value={text} readOnly={listening} onChange={event => { setText(event.target.value); setPlan(null); }} placeholder="Перенеси задачу «Покрасить стены» в Дом / Ремонт / Кухня и поставь срок завтра" disabled={busy} /></Field>
-    <p className="text-xs text-[var(--muted)]">Ollama обрабатывает команды локально. Голос распознаёт браузер; для этого может понадобиться интернет.</p>
-    <div className="flex flex-wrap gap-2"><Button disabled={busy} aria-pressed={listening} onClick={dictate}><Mic size={16} />{listening ? "Остановить диктовку" : "Продиктовать"}</Button>{([['manage','Выполнить команду'],['parse','Разобрать в записи'],['chat','Обсудить']] as const).map(([action,label]) => <Button key={action} variant={action === "manage" ? "primary" : "plain"} disabled={busy || listening || !model || !text.trim()} onClick={() => void send(action)}>{label}</Button>)}{busy ? <Button onClick={() => abort.current?.abort()}>Стоп</Button> : <Button onClick={() => void check()}>Проверить модель</Button>}</div>
-    {plan && (plan.actions.length || plan.sync) ? <section className="assistant-plan grid gap-3" aria-label="Предварительный план изменений"><h3>Будет выполнено</h3>{plan.actions.map((action,index) => <div key={index} className="p-3 rounded-2xl border border-[var(--line)]"><b>{action.type === "project" ? "Новый проект" : action.type === "create" ? `Новая запись: ${action.entry.title}` : action.title}</b><p className="text-sm whitespace-pre-wrap">{action.type === "project" ? action.path.join(" / ") : summary(action.type === "update" ? action.patch : action.entry)}</p></div>)}{plan.sync ? <p>Проверить синхронизацию с облаком</p> : null}<Button variant="primary" disabled={busy} onClick={() => void perform("apply")}>Применить изменения</Button><Button disabled={busy} onClick={() => setPlan(null)}>Отменить план</Button></section> : null}
-    <details><summary className="cursor-pointer py-3 font-bold">Обслуживание записей</summary><div className="flex flex-wrap gap-2 py-2"><Button disabled={busy || listening || !model} onClick={() => void send("manage", "Проверь все записи выбранного контекста. Предложи исправления типов, разделов и вложенных проектов только там, где исходный смысл однозначен. Сохрани описания, исходные тексты, цены, даты и владельцев. Непонятные записи оставь без изменений. Не создавай дубли. Верни план изменений для проверки.")}>Разобрать записи раздела</Button><Button disabled={busy || listening} onClick={() => void perform("organize")}>Упорядочить проекты</Button><Button disabled={busy || listening} onClick={() => void perform("sync")}>Синхронизировать сейчас</Button></div></details>
-    </div>
-  </Surface></div>;
+  async function send(value = text, fromVoice = false) {
+    const question=value.trim();
+    if(!question || busy || (listening && !fromVoice)) return;
+    setExpanded(true); setText(""); setError("");
+    const pending=[...messages].reverse().find(item=>item.state==="pending" && item.plan);
+    const confirmation=confirmationIntent(question);
+    if(pending && confirmation) {
+      add("user",question);
+      if(confirmation==="apply") await apply(pending);
+      else { setMessages(current=>current.map(item=>item.id===pending.id ? {...item,state:"dismissed"} : item)); add("assistant","Хорошо, этот план отменён. Записи не изменены."); }
+      return;
+    }
+    if(!ready) { setText(question); setError("Локальная модель пока недоступна. Нажмите «Подключить снова»."); return; }
+    const controller=new AbortController(); abort.current=controller; setBusy(true);
+    const requestGeneration=generation.current;
+    const history=conversationHistory(messages.map(item=>item.state==="pending" ? {...item,state:"dismissed" as const} : item));
+    setMessages(current=>current.map(item=>item.state==="pending" ? {...item,state:"dismissed"} : item));
+    add("user",question);
+    try {
+      if(entries.length>150) throw new Error("В ежедневнике больше 150 записей: контекст этого чата пока ограничен 150 записями.");
+      const context=entries.map(({id,title,kind,status,area,dueDate,projectPath,assignedTo,priority,revision,updatedAt,needsReview,description,notes,purchase,wish})=>({id,title,kind,status,area,dueDate,projectPath,assignedTo,priority,revision,updatedAt,needsReview,description:description?.slice(0,220),notes:notes?.slice(0,180),...(purchase ? {purchase:{quantity:purchase.quantity,totalPrice:purchase.totalPrice,unitPrice:purchase.unitPrice,currency:purchase.currency,status:purchase.status}} : {}),...(wish ? {wish:{status:wish.status,estimatedPrice:wish.estimatedPrice,currency:wish.currency}} : {})}));
+      const response=await fetch("/api/local-ai",{method:"POST",headers:{"content-type":"application/json"},signal:controller.signal,body:JSON.stringify({action:"conversation",text:question,history,context,projects:projects.map(({id,name,area,parentId})=>({id,name,area,parentId})),spaces:spaces.map(({id,name})=>({id,name})),currentScreen})});
+      const result=await response.json();
+      if(requestGeneration!==generation.current) return;
+      if(!response.ok) throw new Error(result.error ?? "Не удалось получить ответ");
+      const plan=validateAssistantPlan(result.plan,entries,question);
+      if(plan.actions.length) add("assistant",plan.answer || "Предлагаю такие изменения. Можно нажать «Применить» или ответить «да».",{plan,state:"pending"});
+      else if(plan.sync && /синхрон|обнови.*облак|обнови.*запис/i.test(question)) { const ok=await onSync(); add("assistant",ok ? "Синхронизация с облаком завершена." : "Синхронизация не завершена. Проверьте вход через «Облако» и подключение к интернету."); }
+      else add("assistant",plan.answer || "Не получилось составить ответ. Попробуйте уточнить вопрос.");
+    } catch(error) {
+      if(requestGeneration===generation.current) add("assistant",controller.signal.aborted ? "Запрос остановлен. Можно продолжить другим сообщением." : error instanceof Error ? error.message : "Не удалось получить ответ. Попробуйте ещё раз.");
+    } finally { if(requestGeneration===generation.current) { setBusy(false); abort.current=null; } }
+  }
+  function dictate() {
+    if(speech.current) { sendAfterVoice.current=true; speech.current.stop(); return; }
+    const Recognition=window.SpeechRecognition ?? window.webkitSpeechRecognition;
+    if(!Recognition) { setError("В этом браузере нет голосового ввода. Используйте Chrome или напишите сообщение."); return; }
+    setError(""); setExpanded(true); sendAfterVoice.current=false;
+    const recognition=new Recognition(); const base=text.trim(); voiceText.current=base;
+    recognition.lang="ru-RU";recognition.continuous=true;recognition.interimResults=true;
+    recognition.onstart=()=>setListening(true);
+    recognition.onresult=event=>{voiceText.current=[base,Array.from(event.results).map(item=>item[0].transcript).join(" ")].filter(Boolean).join(" ");setText(voiceText.current);};
+    recognition.onerror=event=>{sendAfterVoice.current=false;setError(event.error==="not-allowed" ? "Разрешите доступ к микрофону в браузере." : "Распознавание остановлено. Текст остался в поле ввода.");};
+    recognition.onend=()=>{speech.current=null;setListening(false);if(sendAfterVoice.current && voiceText.current.trim()){sendAfterVoice.current=false;sendRef.current(voiceText.current,true);}};
+    speech.current=recognition;
+    try {recognition.start();}catch{speech.current=null;setListening(false);setError("Не удалось включить микрофон");}
+  }
+  return <aside className={`diary-chat ${expanded ? "is-expanded" : ""}`} aria-label="Чат ежедневника">
+    <header className="diary-chat-header"><div className="diary-chat-title"><Bot size={23}/><div><h2>Чат ежедневника</h2><p>Локально · {entries.length} записей</p></div></div><div className="flex gap-1"><button className="icon-control" type="button" aria-label="Очистить диалог" disabled={busy || listening || !messages.length} onClick={()=>{setMessages([]);setText("");}}><Trash2 size={17}/></button><button className="icon-control chat-collapse" type="button" aria-label={expanded ? "Свернуть чат" : "Открыть чат"} aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>{expanded ? <ChevronDown size={20}/> : <MessageCircle size={20}/>}</button></div></header>
+    <div className="diary-chat-body"><div className="diary-chat-log" ref={log} tabIndex={0} role="log" aria-label="Переписка" aria-live="polite" aria-relevant="additions text">
+      {!messages.length ? <div className="chat-welcome"><span><Bot size={30}/></span><h3>Давай разберёмся</h3><p>Я вижу записи и проекты. Спроси, что осталось купить, расскажи о новых делах или попроси навести порядок.</p><div>{["Что ещё нужно купить?","Что у нас на сегодня?","Помоги разобрать записи"].map(question=><button type="button" key={question} disabled={!ready || busy} onClick={()=>void send(question)}>{question}</button>)}</div></div> : messages.map(message=><article key={message.id} className={`chat-message is-${message.role}`}><span className="chat-speaker">{message.role==="user" ? "Вы" : "Ежедневник"}</span><p>{message.text}</p>{message.plan ? <div className="chat-plan">{message.plan.actions.map((action,index)=><div key={index}>{describeAction(action)}</div>)}{message.state==="pending" ? <div className="chat-plan-actions"><Button variant="primary" disabled={busy || listening} onClick={()=>void apply(message)}>Применить</Button><Button disabled={busy || listening} onClick={()=>{setMessages(current=>current.map(item=>item.id===message.id ? {...item,state:"dismissed"} : item));add("assistant","План отменён, записи не изменены.");}}>Отменить</Button></div> : <small>{message.state==="applied" ? "Изменения применены" : "План отменён"}</small>}</div> : null}</article>)}
+      {busy ? <p className="chat-thinking" role="status">Думаю над ответом…</p> : null}
+    </div><form className="diary-chat-composer" onSubmit={event=>{event.preventDefault();void send();}}>
+      {error ? <div className="chat-error" role="status"><p>{error}</p>{!ready ? <Button type="button" onClick={()=>void connect()}>Подключить снова</Button> : null}</div> : null}
+      <Textarea aria-label="Сообщение в чат ежедневника" placeholder="Напиши или расскажи…" value={text} maxLength={12000} readOnly={listening} onChange={event=>setText(event.target.value)} onKeyDown={event=>{if(event.key==="Enter" && !event.shiftKey && !event.nativeEvent.isComposing){event.preventDefault();void send();}}}/>
+      <div className="chat-compose-actions"><button type="button" className={`icon-control ${listening ? "is-recording" : ""}`} aria-label={listening ? "Отправить диктовку" : "Надиктовать сообщение"} aria-pressed={listening} disabled={busy} onClick={dictate}><Mic size={20}/></button><span>{listening ? "Нажми микрофон, чтобы отправить" : "Enter — отправить"}</span>{busy ? <button className="icon-control" type="button" aria-label="Остановить ответ" onClick={()=>abort.current?.abort()}><Square size={18}/></button> : <button className="chat-send" type="submit" aria-label="Отправить сообщение" disabled={!text.trim() || listening}><ArrowUp size={21}/></button>}</div>
+      <details className="chat-details"><summary>О чате и синхронизации</summary><p>{syncMessage || "Для обмена с телефоном войдите в тот же аккаунт через «Облако»."}</p><p>Команды обрабатываются на компьютере. Распознавание голоса браузером может требовать интернет.</p></details>
+    </form></div>
+  </aside>;
+}
+function describeAction(action: AssistantAction) {
+  if(action.type==="project") return `Создать проект: ${action.path.join(" / ")}`;
+  if(action.type==="create") return `Добавить: ${action.entry.title}${action.entry.projectPath?.length ? ` · ${action.entry.projectPath.join(" / ")}` : ""}`;
+  const labels: Record<string,string>={title:"Название",kind:"Тип",area:"Раздел",projectPath:"Проект",status:"Статус",priority:"Важность",assignedTo:"Кому",dueDate:"Дата",notes:"Заметки",description:"Описание"};
+  const values: Record<string,string>={task:"задача",purchase:"покупка",wish:"хотелка",note:"заметка",idea:"идея",inbox:"на разбор",active:"в работе",done:"готово",bought:"куплено",ordered:"заказано",waiting:"ожидает",cancelled:"отменено",want_to_buy:"нужно купить",normal:"обычная",high:"высокая",low:"низкая",me:"мне",partner:"партнёру",shared:"общее"};
+  return `${action.title}: ${Object.entries(action.patch).filter(([key])=>labels[key]).map(([key,value])=>`${labels[key]} — ${Array.isArray(value) ? value.join(" / ") : value===undefined ? "убрать" : values[String(value)] ?? String(value)}`).join("; ")}`;
 }
