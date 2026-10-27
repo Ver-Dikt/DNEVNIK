@@ -1,9 +1,10 @@
 "use client";
 import { ArrowUp, Bot, ChevronDown, MessageCircle, Mic, Square, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Button, Textarea } from "@/components/ui/native";
+import { Button, Field, Select, Textarea } from "@/components/ui/native";
 import { validateAssistantPlan, type AssistantAction, type AssistantPlan } from "@/lib/assistant-actions";
 import { confirmationIntent, conversationHistory, restoreConversation, type ChatMessage } from "@/lib/conversation";
+import { useLocalDictation } from "@/hooks/use-local-dictation";
 import type { DiaryEntry, ProjectNode, Space } from "@/lib/types";
 
 type Props = { entries: DiaryEntry[]; projects: ProjectNode[]; spaces: Space[]; syncMessage: string; storageScope: string; currentScreen: string; onSync: () => Promise<boolean>; onApply: (plan: AssistantPlan) => Promise<void> };
@@ -20,14 +21,17 @@ function DiaryConversation({ entries, projects, spaces, syncMessage, storageScop
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [listening, setListening] = useState(false);
   const [error, setError] = useState("");
   const abort = useRef<AbortController | null>(null);
-  const speech = useRef<InstanceType<NonNullable<Window["SpeechRecognition"]>> | null>(null);
-  const voiceText = useRef("");
-  const sendAfterVoice = useRef(false);
+
+
+
   const generation = useRef(0);
   const sendRef = useRef<(value: string, voice?: boolean) => void>(() => undefined);
+  const dictation = useLocalDictation(text, value => { setText(value); sendRef.current(value,true); });
+  const cancelDictation = dictation.cancel;
+  const voiceActive = dictation.phase !== "idle";
+  const listening = dictation.phase === "recording";
   const log = useRef<HTMLDivElement>(null);
   const storageKey = `dnevnik.chat.v1.${encodeURIComponent(storageScope)}`;
   useEffect(() => {
@@ -37,10 +41,10 @@ function DiaryConversation({ entries, projects, spaces, syncMessage, storageScop
       try { const value = JSON.parse(localStorage.getItem(storageKey) ?? "{}"); setMessages(restoreConversation(value.messages)); setText(typeof value.draft === "string" ? value.draft.slice(0,12000) : ""); } catch { /* An invalid chat does not affect diary data. */ }
       setLoaded(true);
     });
-    const reset = () => { generation.current++; sendAfterVoice.current=false; abort.current?.abort(); speech.current?.abort(); setBusy(false); setMessages([]); setText(""); };
+    const reset = () => { generation.current++; cancelDictation(); abort.current?.abort(); setBusy(false); setMessages([]); setText(""); };
     window.addEventListener("dnevnik:reset-chat",reset);
-    return () => { cancelled = true; window.removeEventListener("dnevnik:reset-chat",reset); sendAfterVoice.current = false; speech.current?.abort(); abort.current?.abort(); };
-  }, [storageKey]);
+    return () => { cancelled = true; window.removeEventListener("dnevnik:reset-chat",reset); abort.current?.abort(); };
+  }, [storageKey,cancelDictation]);
   useEffect(() => {
     if(!loaded) return;
     try { localStorage.setItem(storageKey,JSON.stringify({ messages: messages.slice(-40).map(({id,role,text,state})=>({id,role,text,state})),draft:text })); } catch { /* The diary and the visible chat still work if storage is full. */ }
@@ -73,7 +77,7 @@ function DiaryConversation({ entries, projects, spaces, syncMessage, storageScop
   }
   async function send(value = text, fromVoice = false) {
     const question=value.trim();
-    if(!question || busy || (listening && !fromVoice)) return;
+    if(!question || busy || (voiceActive && !fromVoice)) return;
     setExpanded(true); setText(""); setError("");
     const pending=[...messages].reverse().find(item=>item.state==="pending" && item.plan);
     const confirmation=confirmationIntent(question);
@@ -104,30 +108,19 @@ function DiaryConversation({ entries, projects, spaces, syncMessage, storageScop
       if(requestGeneration===generation.current) add("assistant",controller.signal.aborted ? "Запрос остановлен. Можно продолжить другим сообщением." : error instanceof Error ? error.message : "Не удалось получить ответ. Попробуйте ещё раз.");
     } finally { if(requestGeneration===generation.current) { setBusy(false); abort.current=null; } }
   }
-  function dictate() {
-    if(speech.current) { sendAfterVoice.current=true; speech.current.stop(); return; }
-    const Recognition=window.SpeechRecognition ?? window.webkitSpeechRecognition;
-    if(!Recognition) { setError("В этом браузере нет голосового ввода. Используйте Chrome или напишите сообщение."); return; }
-    setError(""); setExpanded(true); sendAfterVoice.current=false;
-    const recognition=new Recognition(); const base=text.trim(); voiceText.current=base;
-    recognition.lang="ru-RU";recognition.continuous=true;recognition.interimResults=true;
-    recognition.onstart=()=>setListening(true);
-    recognition.onresult=event=>{voiceText.current=[base,Array.from(event.results).map(item=>item[0].transcript).join(" ")].filter(Boolean).join(" ");setText(voiceText.current);};
-    recognition.onerror=event=>{sendAfterVoice.current=false;setError(event.error==="not-allowed" ? "Разрешите доступ к микрофону в браузере." : "Распознавание остановлено. Текст остался в поле ввода.");};
-    recognition.onend=()=>{speech.current=null;setListening(false);if(sendAfterVoice.current && voiceText.current.trim()){sendAfterVoice.current=false;sendRef.current(voiceText.current,true);}};
-    speech.current=recognition;
-    try {recognition.start();}catch{speech.current=null;setListening(false);setError("Не удалось включить микрофон");}
-  }
+  function dictate() { setError(""); if(dictation.phase === "requesting" || dictation.phase === "transcribing") dictation.cancel(); else void dictation.toggle(); }
   return <aside className={`diary-chat ${expanded ? "is-expanded" : ""}`} aria-label="Чат ежедневника">
-    <header className="diary-chat-header"><div className="diary-chat-title"><Bot size={23}/><div><h2>Чат ежедневника</h2><p>Локально · {entries.length} записей</p></div></div><div className="flex gap-1"><button className="icon-control" type="button" aria-label="Очистить диалог" disabled={busy || listening || !messages.length} onClick={()=>{setMessages([]);setText("");}}><Trash2 size={17}/></button><button className="icon-control chat-collapse" type="button" aria-label={expanded ? "Свернуть чат" : "Открыть чат"} aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>{expanded ? <ChevronDown size={20}/> : <MessageCircle size={20}/>}</button></div></header>
+    <header className="diary-chat-header"><div className="diary-chat-title"><Bot size={23}/><div><h2>Чат ежедневника</h2><p>Локально · {entries.length} записей</p></div></div><div className="flex gap-1"><button className="icon-control" type="button" aria-label="Очистить диалог" disabled={busy || voiceActive || !messages.length} onClick={()=>{setMessages([]);setText("");}}><Trash2 size={17}/></button><button className="icon-control chat-collapse" type="button" aria-label={expanded ? "Свернуть чат" : "Открыть чат"} aria-expanded={expanded} onClick={()=>setExpanded(value=>!value)}>{expanded ? <ChevronDown size={20}/> : <MessageCircle size={20}/>}</button></div></header>
     <div className="diary-chat-body"><div className="diary-chat-log" ref={log} tabIndex={0} role="log" aria-label="Переписка" aria-live="polite" aria-relevant="additions text">
-      {!messages.length ? <div className="chat-welcome"><span><Bot size={30}/></span><h3>Давай разберёмся</h3><p>Я вижу записи и проекты. Спроси, что осталось купить, расскажи о новых делах или попроси навести порядок.</p><div>{["Что ещё нужно купить?","Что у нас на сегодня?","Помоги разобрать записи"].map(question=><button type="button" key={question} disabled={!ready || busy} onClick={()=>void send(question)}>{question}</button>)}</div></div> : messages.map(message=><article key={message.id} className={`chat-message is-${message.role}`}><span className="chat-speaker">{message.role==="user" ? "Вы" : "Ежедневник"}</span><p>{message.text}</p>{message.plan ? <div className="chat-plan">{message.plan.actions.map((action,index)=><div key={index}>{describeAction(action)}</div>)}{message.state==="pending" ? <div className="chat-plan-actions"><Button variant="primary" disabled={busy || listening} onClick={()=>void apply(message)}>Применить</Button><Button disabled={busy || listening} onClick={()=>{setMessages(current=>current.map(item=>item.id===message.id ? {...item,state:"dismissed"} : item));add("assistant","План отменён, записи не изменены.");}}>Отменить</Button></div> : <small>{message.state==="applied" ? "Изменения применены" : "План отменён"}</small>}</div> : null}</article>)}
+      {!messages.length ? <div className="chat-welcome"><span><Bot size={30}/></span><h3>Давай разберёмся</h3><p>Я вижу записи и проекты. Спроси, что осталось купить, расскажи о новых делах или попроси навести порядок.</p><div>{["Что ещё нужно купить?","Что у нас на сегодня?","Помоги разобрать записи"].map(question=><button type="button" key={question} disabled={!ready || busy} onClick={()=>void send(question)}>{question}</button>)}</div></div> : messages.map(message=><article key={message.id} className={`chat-message is-${message.role}`}><span className="chat-speaker">{message.role==="user" ? "Вы" : "Ежедневник"}</span><p>{message.text}</p>{message.plan ? <div className="chat-plan">{message.plan.actions.map((action,index)=><div key={index}>{describeAction(action)}</div>)}{message.state==="pending" ? <div className="chat-plan-actions"><Button variant="primary" disabled={busy || voiceActive} onClick={()=>void apply(message)}>Применить</Button><Button disabled={busy || voiceActive} onClick={()=>{setMessages(current=>current.map(item=>item.id===message.id ? {...item,state:"dismissed"} : item));add("assistant","План отменён, записи не изменены.");}}>Отменить</Button></div> : <small>{message.state==="applied" ? "Изменения применены" : "План отменён"}</small>}</div> : null}</article>)}
       {busy ? <p className="chat-thinking" role="status">Думаю над ответом…</p> : null}
     </div><form className="diary-chat-composer" onSubmit={event=>{event.preventDefault();void send();}}>
+      {dictation.error ? <div className="chat-error" role="alert"><p>{dictation.error}</p>{dictation.audioUrl ? <><audio controls src={dictation.audioUrl} aria-label="Прослушать записанный звук"/><Button type="button" disabled={voiceActive || busy} onClick={dictation.retry}>Распознать ещё раз</Button></> : null}</div> : null}
       {error ? <div className="chat-error" role="status"><p>{error}</p>{!ready ? <Button type="button" onClick={()=>void connect()}>Подключить снова</Button> : null}</div> : null}
-      <Textarea aria-label="Сообщение в чат ежедневника" placeholder="Напиши или расскажи…" value={text} maxLength={12000} readOnly={listening} onChange={event=>setText(event.target.value)} onKeyDown={event=>{if(event.key==="Enter" && !event.shiftKey && !event.nativeEvent.isComposing){event.preventDefault();void send();}}}/>
-      <div className="chat-compose-actions"><button type="button" className={`icon-control ${listening ? "is-recording" : ""}`} aria-label={listening ? "Отправить диктовку" : "Надиктовать сообщение"} aria-pressed={listening} disabled={busy} onClick={dictate}><Mic size={20}/></button><span>{listening ? "Нажми микрофон, чтобы отправить" : "Enter — отправить"}</span>{busy ? <button className="icon-control" type="button" aria-label="Остановить ответ" onClick={()=>abort.current?.abort()}><Square size={18}/></button> : <button className="chat-send" type="submit" aria-label="Отправить сообщение" disabled={!text.trim() || listening}><ArrowUp size={21}/></button>}</div>
-      <details className="chat-details"><summary>О чате и синхронизации</summary><p>{syncMessage || "Для обмена с телефоном войдите в тот же аккаунт через «Облако»."}</p><p>Команды обрабатываются на компьютере. Распознавание голоса браузером может требовать интернет.</p></details>
+      <Textarea aria-label="Сообщение в чат ежедневника" placeholder="Напиши или расскажи…" value={text} maxLength={12000} readOnly={voiceActive} onChange={event=>setText(event.target.value)} onKeyDown={event=>{if(event.key==="Enter" && !event.shiftKey && !event.nativeEvent.isComposing){event.preventDefault();void send();}}}/>
+      <div className="chat-compose-actions"><button type="button" className={`icon-control ${listening ? "is-recording" : ""}`} aria-label={dictation.phase === "requesting" ? "Отменить включение микрофона" : dictation.phase === "transcribing" ? "Остановить распознавание" : listening ? "Отправить диктовку" : "Надиктовать сообщение"} aria-pressed={voiceActive} disabled={busy} onClick={dictate}>{dictation.phase === "transcribing" ? <Square size={20}/> : <Mic size={20}/>}</button><span>{dictation.phase === "requesting" ? "Ожидаю доступ к микрофону…" : dictation.phase === "transcribing" ? "Распознаю запись на компьютере…" : listening ? `Запись ${Math.floor(dictation.seconds / 60)}:${String(dictation.seconds % 60).padStart(2,"0")}` : "Enter — отправить"}</span>{busy ? <button className="icon-control" type="button" aria-label="Остановить ответ" onClick={()=>abort.current?.abort()}><Square size={18}/></button> : <button className="chat-send" type="submit" aria-label="Отправить сообщение" disabled={!text.trim() || voiceActive}><ArrowUp size={21}/></button>}</div>
+      {listening ? <div className="voice-meter" role="status"><meter aria-label="Уровень микрофона" min={0} max={100} value={dictation.level}/><span>{dictation.level ? "Звук поступает" : "Звука пока не слышно"}</span></div> : null}
+      <details className="chat-details"><summary>Микрофон и синхронизация</summary><p>{syncMessage || "Для обмена с телефоном войдите в тот же аккаунт через «Облако»."}</p><p>Звук записывается здесь и распознаётся на компьютере. Нажмите микрофон ещё раз, чтобы закончить и отправить сообщение.</p>{dictation.devices.length ? <Field label="Вход звука"><Select value={dictation.deviceId} disabled={voiceActive} onChange={event=>dictation.setDeviceId(event.target.value)}><option value="">Системный микрофон</option>{dictation.devices.filter(device=>device.deviceId!=="default"&&device.deviceId!=="communications").map((device,index)=><option key={device.deviceId} value={device.deviceId}>{device.label || `Микрофон ${index+1}`}</option>)}</Select></Field> : null}</details>
     </form></div>
   </aside>;
 }

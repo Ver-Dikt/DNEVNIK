@@ -204,6 +204,9 @@ html[data-theme] .app-dialog { background: var(--solid-surface); }
 .chat-details p { margin-block: var(--s2); line-height: 1.55; }
 .chat-error { font-size: 13px; color: var(--foreground); border-left: 3px solid var(--accent); padding-left: var(--s3); margin-bottom: var(--s3); }
 .chat-error .button { margin-top: var(--s2); }
+.chat-error audio { width: 100%; margin-top: var(--s2); }
+.voice-meter { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); font-size: 12px; color: var(--muted); }
+.voice-meter meter { min-width: 80px; flex: 1; height: 12px; }
 @media (min-width: 768px) and (max-width: 1199px) { .diary-chat { bottom: var(--s4); } .diary-layout:has(.diary-chat) { padding-bottom: calc(var(--s8) * 3 + var(--s5)); } }
 @media (min-width: 1200px) {
   .diary-layout:has(.diary-chat) { max-width: 1680px; grid-template-columns: 224px minmax(0,1fr) 360px; }
