@@ -8,6 +8,8 @@ import { useRef, useState, type ReactNode } from "react";
 import { Button, Field, Input, Segmented, Select, Surface } from "@/components/ui/native";
 import { EntryCard } from "@/features/entries/EntryCard";
 import { calculateBudget } from "@/lib/finance";
+import { CategoryFilter } from "@/components/ui/CategoryFilter";
+import { inCategory } from "@/lib/entry-category";
 import { purchaseStatusGroup, wishStatus } from "@/features/shared/entry-utils";
 import type { AppSettings, AssignedTo, CalendarEvent, DiaryEntry, ImportantDate, LoyaltyCard, Member, SharedPlan, Space } from "@/lib/types";
 
@@ -142,13 +144,16 @@ function formatShortDate(date: string) {
 export function TasksView({ entries, members, spaces, onAdd, onComplete, onOpen }: EntryListProps) {
   const [filter, setFilter] = useOwnerFilter();
   const [taskState, setTaskState] = useState<"active" | "done" | "all">("active");
+  const [category,setCategory] = useState("");
   const addTask = () => onAdd?.(filter);
-  const tasks = entries.filter((entry) => entry.kind === "task" && matchesAssignee(entry, filter) && (taskState === "all" || (taskState === "done" ? entry.status === "done" : entry.status !== "done" && entry.status !== "bought" && entry.status !== "cancelled")));
+  const allTasks = entries.filter(entry => entry.kind === "task");
+  const tasks = allTasks.filter((entry) => matchesAssignee(entry, filter) && inCategory(entry,category) && (taskState === "all" || (taskState === "done" ? entry.status === "done" : entry.status !== "done" && entry.status !== "bought" && entry.status !== "cancelled")));
   return (
     <div className="grid gap-4">
       <Header action={<IconAddButton label="Добавить задачу" onClick={addTask} />} eyebrow="Ответственность" title="Задачи" />
       <Segmented value={filter} onChange={setFilter} options={ownerFilterOptions} />
       <Segmented value={taskState} onChange={setTaskState} options={[{label: "В работе", value: "active"}, {label: "Готово", value: "done"}, {label: "Все", value: "all"}]} />
+      <CategoryFilter entries={allTasks} value={category} onChange={setCategory} />
       <EntryList entries={tasks} members={members} spaces={spaces} onComplete={onComplete} onOpen={onOpen} emptyAction={addTask} emptyButton="Добавить задачу" emptyIcon={<CheckCircle2 size={58} />} emptyTitle="Список дел на двоих" empty="Пишите, что нужно сделать. Задачу можно оставить себе или отдать партнёру." />
     </div>
   );

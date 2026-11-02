@@ -105,6 +105,13 @@ export function DnevnikApp() {
     return imported;
   }, [importDnevnikData]);
   const cloud = useCloudSync({ ready: data.status.ready, exportData: cloudExportData, importData: cloudImportData });
+  const syncNow = cloud.saveNow;
+  const pendingAssistantSync = useRef(false);
+  useEffect(() => {
+    if (!pendingAssistantSync.current) return;
+    pendingAssistantSync.current = false;
+    void syncNow().then(ok => setToast(ok ? {title:"Синхронизация завершена", detail:"Изменения отправлены в облако."} : {title:"Синхронизация не подтверждена", detail:"Изменения сохранены локально. Проверьте облако и подключение."}));
+  }, [data.entries, data.projects, data.spaces, syncNow]);
 
   useEffect(() => {
     voiceFinishedRef.current = text => { void parseText(text, true); };
@@ -533,7 +540,7 @@ export function DnevnikApp() {
     await backupBeforeManagement();
     const current = currentData.current;
     const result = applyAssistantPlan(plan, current.entries, current.projects, current.spaces);
-    if(plan.actions.length) { current.setProjects(result.projects); current.setEntries(result.entries); }
+    if(plan.actions.length) { pendingAssistantSync.current = plan.sync; if(plan.actions.some(action => action.type === "space")) current.setSpaces(result.spaces); current.setProjects(result.projects); current.setEntries(result.entries); }
     if(plan.sync && !plan.actions.length && !await cloud.saveNow()) throw new Error("Облако не подтвердило синхронизацию. Проверьте вход и подключение.");
   }
 

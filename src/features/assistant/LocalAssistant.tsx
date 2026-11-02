@@ -133,9 +133,11 @@ function DiaryConversation({ entries, projects, spaces, extras, syncMessage, sto
   </aside>;
 }
 function describeAction(action: AssistantAction) {
+  if(action.type==="space") return `Создать раздел: ${action.name}`;
+  if(action.type==="delete") return `Удалить запись: ${action.title}`;
   if(action.type==="project") return `Создать проект: ${action.path.join(" / ")}`;
   if(action.type==="create") return `Добавить: ${action.entry.title}${action.entry.projectPath?.length ? ` · ${action.entry.projectPath.join(" / ")}` : ""}`;
-  const labels: Record<string,string>={title:"Название",kind:"Тип",area:"Раздел",projectPath:"Проект",status:"Статус",priority:"Важность",assignedTo:"Кому",dueDate:"Дата",notes:"Заметки",description:"Описание"};
+  const labels: Record<string,string>={title:"Название",kind:"Тип",area:"Раздел",projectPath:"Проект",status:"Статус",priority:"Важность",assignedTo:"Кому",dueDate:"Дата",notes:"Заметки",description:"Описание",quantity:"Количество",unitPrice:"Цена за единицу",totalPrice:"Сумма",currency:"Валюта"};
   const values: Record<string,string>={task:"задача",purchase:"покупка",wish:"хотелка",note:"заметка",idea:"идея",inbox:"на разбор",active:"в работе",done:"готово",bought:"куплено",ordered:"заказано",waiting:"ожидает",cancelled:"отменено",want_to_buy:"нужно купить",normal:"обычная",high:"высокая",low:"низкая",me:"мне",partner:"партнёру",shared:"общее"};
   return `${action.title}: ${Object.entries(action.patch).filter(([key])=>labels[key]).map(([key,value])=>`${labels[key]} — ${Array.isArray(value) ? value.join(" / ") : value===undefined ? "убрать" : values[String(value)] ?? String(value)}`).join("; ")}`;
 }

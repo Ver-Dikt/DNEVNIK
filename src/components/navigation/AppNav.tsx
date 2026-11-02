@@ -48,16 +48,19 @@ function SectionMenu({ active, onClose, onChange }: { active: ScreenId; onClose:
 }
 
 export function DesktopNav({ active, onChange }: { active: ScreenId; onChange: (screen: ScreenId) => void }) {
-  return <aside className="sticky top-5 hidden h-[calc(100dvh-40px)] md:block">
+  const [menuOpen,setMenuOpen] = useState(false);
+  const primary = new Set<ScreenId>(["us","plan","tasks","purchases","wishlist"]);
+  return <><aside className="sticky top-5 hidden h-[calc(100dvh-40px)] md:block">
     <nav className="surface app-sidebar" aria-label="Разделы ежедневника">
       <div className="sidebar-brand"><span className="brand-icon"><CalendarDays size={24} /></span><div><strong>Ежедневник</strong><p>Всё важное рядом</p></div></div>
-      {navItems.map(item => {
+      {navItems.filter(item => primary.has(item.id) || item.id === active).map(item => {
         const Icon = item.icon;
         return <button key={item.id} type="button" aria-current={active === item.id ? "page" : undefined} className={`sidebar-item ${active === item.id ? "is-active" : ""}`} onClick={() => onChange(item.id)}><Icon size={19} /><span>{item.label}</span></button>;
       })}
+      <button type="button" className="sidebar-item" aria-haspopup="dialog" aria-expanded={menuOpen} onClick={()=>setMenuOpen(true)}><LayoutGrid size={19} /><span>Ещё разделы</span></button>
       <div className="sidebar-note">Ваши записи — в этом браузере.<button onClick={() => onChange("settings")} type="button">Сохранить резервную копию →</button></div>
     </nav>
-  </aside>;
+  </aside>{menuOpen ? <SectionMenu active={active} onClose={()=>setMenuOpen(false)} onChange={screen=>{setMenuOpen(false);onChange(screen);}}/> : null}</>;
 }
 
 function NavButton({ active, item, onClick }: { active: boolean; item: typeof navItems[number]; onClick: () => void }) {

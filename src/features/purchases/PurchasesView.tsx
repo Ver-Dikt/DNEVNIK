@@ -6,9 +6,14 @@ import { purchaseStatusGroup } from "@/features/shared/entry-utils";
 import { Button } from "@/components/ui/native";
 import { Plus } from "lucide-react";
 import type { DiaryEntry, Member, Space } from "@/lib/types";
+import { useState } from "react";
+import { CategoryFilter } from "@/components/ui/CategoryFilter";
+import { inCategory } from "@/lib/entry-category";
 
 export function PurchasesView({ entries, members, spaces, status, onAdd, onStatusChange, onComplete, onOpen }: { entries: DiaryEntry[]; members: Member[]; spaces: Space[]; status: "planned" | "ordered" | "purchased"; onAdd: () => void; onStatusChange: (status: "planned" | "ordered" | "purchased") => void; onComplete: (entry: DiaryEntry) => void; onOpen: (entry: DiaryEntry) => void }) {
-  const visible = entries.filter((entry) => entry.kind === "purchase" && entry.status !== "cancelled" && purchaseStatusGroup(entry) === status).sort((a, b) => Number(b.priority === "high") - Number(a.priority === "high"));
+  const [category,setCategory] = useState("");
+  const purchases = entries.filter(entry => entry.kind === "purchase" && entry.status !== "cancelled");
+  const visible = purchases.filter((entry) => purchaseStatusGroup(entry) === status && inCategory(entry,category)).sort((a, b) => Number(b.priority === "high") - Number(a.priority === "high"));
   return (
     <div className="grid gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -27,6 +32,7 @@ export function PurchasesView({ entries, members, spaces, status, onAdd, onStatu
           { label: "Куплено", value: "purchased" }
         ]}
       />
+      <CategoryFilter entries={purchases} value={category} onChange={setCategory} />
       {visible.length ? visible.map((entry) => <EntryCard entry={entry} key={entry.id} members={members} spaces={spaces} onComplete={() => onComplete(entry)} onOpen={() => onOpen(entry)} />) : <Surface className="p-6 text-center text-sm text-[var(--muted)]">В этом статусе покупок пока нет.</Surface>}
     </div>
   );
