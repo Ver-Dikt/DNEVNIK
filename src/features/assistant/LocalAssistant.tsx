@@ -97,7 +97,9 @@ function DiaryConversation({ entries, projects, spaces, extras, syncMessage, sto
     setMessages(current=>current.map(item=>item.state==="pending" ? {...item,state:"dismissed"} : item));
     add("user",question);
     try {
-      const selected=selectAssistantContext({entries,projects,spaces,...extras},question);
+      const previousQuestion = [...messages].reverse().find(item => item.role === "user")?.text ?? "";
+      const lookup = /(?:^|[^\p{L}])(?:это|этого|этому|эти|их|них|него|нее|неё|там)(?=$|[^\p{L}])/iu.test(question) ? `${previousQuestion} ${question}` : question;
+      const selected=selectAssistantContext({entries,projects,spaces,...extras},lookup);
       const response=await fetch("/api/local-ai",{method:"POST",headers:{"content-type":"application/json"},signal:controller.signal,body:JSON.stringify({action:"conversation",text:question,history,context:selected.entries.items,diaryContext:selected,projects:selected.projects.items,spaces:selected.spaces.items,currentScreen})});
       const result=await response.json();
       if(requestGeneration!==generation.current) return;

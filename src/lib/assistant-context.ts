@@ -2,6 +2,24 @@ import type { DnevnikData } from "@/db/schema";
 
 export type AssistantExtras = Pick<DnevnikData, "calendarEvents" | "importantDates" | "documents" | "loyaltyCards" | "sharedPlans" | "savingsGoals" | "financeTransactions" | "planTransactions">;
 
+export function purchaseTotals(entries: DnevnikData["entries"]) {
+  const totals: Record<string, { planned: number; actual: number; missingPlanned: number; missingActual: number }> = {};
+  for (const entry of entries) {
+    if (entry.kind !== "purchase" || entry.status === "cancelled" || entry.purchase?.status === "cancelled") continue;
+    const purchase = entry.purchase;
+    const currency = (purchase?.currency ?? entry.currency ?? "RUB").toUpperCase();
+    const result = totals[currency] ??= {planned:0,actual:0,missingPlanned:0,missingActual:0};
+    const unit = purchase?.unitPrice ?? entry.unitPrice;
+    const quantity = purchase?.quantity ?? entry.quantity ?? 1;
+    const planned = purchase?.totalPrice ?? entry.totalPrice ?? (unit != null ? unit * quantity : undefined);
+    const bought = purchase?.status === "purchased" || entry.status === "bought";
+    const amount = bought ? purchase?.actualPrice ?? planned : planned;
+    if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0) { if (bought) result.missingActual++; else result.missingPlanned++; continue; }
+    if (bought) result.actual += amount; else result.planned += amount;
+  }
+  return totals;
+}
+
 // Keep requests bounded while favouring records matching the actual question.
 // Totals travel with the sample so the model cannot mistake a sample for the whole diary.
 export function selectAssistantContext(data: Pick<DnevnikData, "entries" | "projects" | "spaces"> & AssistantExtras, question: string) {
@@ -37,5 +55,5 @@ export function selectAssistantContext(data: Pick<DnevnikData, "entries" | "proj
     largest.items.pop();
     largest.shown = largest.items.length;
   }
-  return result;
+  return { ...result, purchaseTotals: purchaseTotals(data.entries) };
 }

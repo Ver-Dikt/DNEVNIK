@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { DnevnikData } from "@/db/schema";
-import { selectAssistantContext } from "./assistant-context";
+import { purchaseTotals, selectAssistantContext } from "./assistant-context";
 
 describe("assistant context", () => {
+  it("calculates all purchases by currency and reports missing prices", () => {
+    const base: Omit<DnevnikData["entries"][number], "id" | "title"> = {kind:"purchase",status:"want_to_buy",priority:"normal",schedule:"none",projectPath:[],createdAt:"",updatedAt:""};
+    const entries = [...Array.from({length:40}, (_,id) => ({...base,id:String(id),title:"Покупка",totalPrice:10,currency:"RUB"})), {...base,id:"none",title:"Без цены"}, {...base,id:"usd",title:"Доллары",totalPrice:7,currency:"USD"}, {...base,id:"done",title:"Куплено",status:"bought" as const,totalPrice:25,currency:"RUB"}];
+    expect(purchaseTotals(entries)).toEqual({RUB:{planned:400,actual:25,missingPlanned:1,missingActual:0},USD:{planned:7,actual:0,missingPlanned:0,missingActual:0}});
+  });
   it("finds a matching record beyond the old 150-record limit and labels partial data", () => {
     const entries = Array.from({length: 200}, (_, index) => ({id:String(index), title:index === 199 ? "Купить микрофон" : `Запись ${index}`, kind:"task",status:"active",priority:"normal",schedule:"none",projectPath:[],createdAt:"",updatedAt:""}));
     const data = {entries, projects:[], spaces:[], calendarEvents:[], importantDates:[], documents:[], loyaltyCards:[], sharedPlans:[], savingsGoals:[], financeTransactions:[], planTransactions:[]} as unknown as DnevnikData;

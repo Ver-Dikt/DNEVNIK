@@ -187,7 +187,10 @@ html[data-theme] .app-dialog { background: var(--solid-surface); }
 .chat-welcome p { font-size: 14px; line-height: 1.65; color: var(--muted); margin-block: var(--s3) var(--s5); }
 .chat-welcome > div { display: grid; gap: var(--s2); }
 .chat-welcome button { min-height: 44px; border: 1px solid var(--line); background: var(--surface-soft); border-radius: 14px; padding: var(--s3); text-align: left; font-size: 14px; }
+.chat-welcome button:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-soft); }
+.chat-welcome button:focus-visible, .chat-send:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .chat-message { align-self: flex-start; max-width: 100%; background: var(--surface-soft); border-radius: 18px 18px 18px 4px; padding: var(--s3) var(--s4); overflow-wrap: anywhere; }
+.chat-message { border: 1px solid var(--subtle-line); box-shadow: 0 4px 16px rgba(0,0,0,.06); }
 .chat-message.is-user { align-self: flex-end; background: var(--primary); color: var(--on-primary); border-radius: 18px 18px 4px 18px; }
 .chat-speaker { display: block; font-size: 12px; font-weight: 650; margin-bottom: var(--s2); }
 .chat-message > p { white-space: pre-wrap; line-height: 1.65; font-size: 14px; }
