@@ -1,29 +1,29 @@
 /* Dnevnik glass system: readable content, translucent navigation, quiet motion. */
 :root, html[data-theme="dark"] {
-  --background: #10131e; --foreground: #f5f6fc; --muted: #b4bdd0;
-  --surface: rgba(29, 35, 53, .94); --surface-soft: rgba(48, 58, 82, .72);
-  --solid-surface: #1d2335; --glass: rgba(29, 35, 53, .76);
-  --line: #59647e; --subtle-line: rgba(170, 187, 228, .17);
-  --accent: #afc9ff; --accent-soft: rgba(138, 172, 255, .16);
-  --primary: #285ac4; --primary-hover: #204aab; --on-primary: #fff;
+  --background: #101b1b; --foreground: #f4f8f6; --muted: #becdc8;
+  --surface: rgba(28, 44, 42, .96); --surface-soft: rgba(51, 69, 66, .82);
+  --solid-surface: #1c2c2a; --glass: rgba(28, 44, 42, .86);
+  --line: #718b84; --subtle-line: rgba(191, 220, 209, .2);
+  --accent: #a8e7d2; --accent-soft: rgba(115, 203, 172, .17);
+  --primary: #176950; --primary-hover: #125440; --on-primary: #fff;
   --rose: #ffafc6; --rose-soft: rgba(218, 110, 148, .13);
   --success: #82dfb1; --warning: #ffbf85; --danger: #ffb1bd;
   --radius-card: 24px; --radius-control: 14px; --radius-pill: 999px;
   --shadow: 0 12px 36px rgba(0, 0, 0, .18), inset 0 1px rgba(255, 255, 255, .055);
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px; --s8: 32px;
   --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI Variable", "Segoe UI", sans-serif;
-  --backdrop: radial-gradient(ellipse at 7% 0%, #303752 0, transparent 48%), radial-gradient(ellipse at 95% 45%, #302c46 0, transparent 47%), #10131e;
+  --backdrop: radial-gradient(ellipse at 7% 0%, #284b42 0, transparent 48%), radial-gradient(ellipse at 95% 45%, #483a39 0, transparent 47%), #101b1b;
 }
 html[data-theme="light"] {
-  --background: #eef0f7; --foreground: #242c41; --muted: #566078;
-  --surface: rgba(255, 255, 255, .94); --surface-soft: rgba(235, 239, 249, .84);
+  --background: #f2f5f1; --foreground: #20332e; --muted: #4b625b;
+  --surface: rgba(255, 255, 253, .95); --surface-soft: rgba(232, 241, 235, .9);
   --solid-surface: #fff; --glass: rgba(255, 255, 255, .78);
-  --line: #8994aa; --subtle-line: rgba(73, 94, 136, .18);
-  --accent: #2857bb; --accent-soft: rgba(56, 100, 199, .1);
+  --line: #788f87; --subtle-line: rgba(52, 94, 78, .2);
+  --accent: #17684f; --accent-soft: rgba(31, 126, 93, .11);
   --rose: #a82b57; --rose-soft: rgba(192, 73, 117, .08);
   --success: #22704e; --warning: #8d4717; --danger: #a42845;
   --shadow: 0 10px 32px rgba(52, 65, 106, .065), inset 0 1px rgba(255, 255, 255, .95);
-  --backdrop: radial-gradient(ellipse at 2% 0%, #e1dcf6 0, transparent 43%), radial-gradient(ellipse at 100% 35%, #f4e3e6 0, transparent 45%), #eef0f7;
+  --backdrop: radial-gradient(ellipse at 2% 0%, #dceee4 0, transparent 43%), radial-gradient(ellipse at 100% 35%, #f5e8dd 0, transparent 45%), #f2f5f1;
 }
 html[data-theme] body { background: var(--backdrop); background-attachment: fixed; font-family: var(--font-ui); line-height: 1.5; }
 main { gap: var(--s6) !important; padding-top: var(--s6) !important; }
@@ -37,10 +37,11 @@ html[data-theme] :is(.entry-card, .button, .icon-control, .sidebar-item) { trans
 @media (prefers-reduced-motion: reduce) { html[data-theme] :is(.entry-card, .button, .icon-control, .sidebar-item) { transition: none; } html[data-theme] :is(.entry-card, .button, .icon-control):hover { transform: none; } }
 .app-sidebar { padding: var(--s4); gap: var(--s1); border-radius: 28px; }
 .sidebar-brand { padding: var(--s4) var(--s2) var(--s6); }
+.sidebar-brand .brand-icon { border: 1px solid var(--subtle-line); box-shadow: inset 0 1px rgba(255,255,255,.25), 0 6px 16px rgba(25,75,57,.12); }
 .sidebar-brand strong { font-size: 18px; font-weight: 720; letter-spacing: -.025em; }
 .sidebar-brand p, .sidebar-note { font-size: 12px; }
 .sidebar-item { min-height: 46px; border-radius: var(--radius-control); font-weight: 560; transition: background .16s ease, color .16s ease; }
-.sidebar-item.is-active { box-shadow: none; color: var(--accent); background: var(--accent-soft); }
+.sidebar-item.is-active { box-shadow: inset 3px 0 var(--accent); color: var(--accent); background: var(--accent-soft); }
 .sidebar-item.is-active svg { stroke-width: 2.2; }
 .sidebar-note { border-top: 1px solid var(--subtle-line); margin-top: var(--s6); padding-top: var(--s4); }
 .app-toolbar { margin-bottom: var(--s6); gap: var(--s3); }
@@ -63,6 +64,7 @@ html[data-theme] .segmented button.active { background: var(--solid-surface); co
 .entry-card:hover { border-color: var(--accent); }
 .badge { background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 580; }
 .page-symbol { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 18px; background: var(--rose-soft); color: var(--rose); }
+.page-symbol, .chat-welcome > span { border: 1px solid var(--subtle-line); box-shadow: inset 0 1px rgba(255,255,255,.18); }
 .relationship-card { padding: var(--s6); background-image: radial-gradient(ellipse at 100% 0, var(--rose-soft), transparent 65%) !important; }
 .relationship-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s6); }
 .relationship-top > span, .relationship-top > button { display: flex; align-items: center; gap: var(--s2); font-size: 13px; font-weight: 580; }

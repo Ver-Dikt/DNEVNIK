@@ -111,7 +111,7 @@ export function DnevnikApp() {
     if (!pendingAssistantSync.current) return;
     pendingAssistantSync.current = false;
     void syncNow().then(ok => setToast(ok ? {title:"Синхронизация завершена", detail:"Изменения отправлены в облако."} : {title:"Синхронизация не подтверждена", detail:"Изменения сохранены локально. Проверьте облако и подключение."}));
-  }, [data.entries, data.projects, data.spaces, syncNow]);
+  }, [data.entries, data.projects, data.spaces, data.calendarEvents, syncNow]);
 
   useEffect(() => {
     voiceFinishedRef.current = text => { void parseText(text, true); };
@@ -539,8 +539,8 @@ export function DnevnikApp() {
   async function applyLocalPlan(plan: AssistantPlan) {
     await backupBeforeManagement();
     const current = currentData.current;
-    const result = applyAssistantPlan(plan, current.entries, current.projects, current.spaces);
-    if(plan.actions.length) { pendingAssistantSync.current = plan.sync; if(plan.actions.some(action => action.type === "space")) current.setSpaces(result.spaces); current.setProjects(result.projects); current.setEntries(result.entries); }
+    const result = applyAssistantPlan(plan, current.entries, current.projects, current.spaces, current.calendarEvents);
+    if(plan.actions.length) { pendingAssistantSync.current = plan.sync; if(plan.actions.some(action => action.type === "space")) current.setSpaces(result.spaces); if(plan.actions.some(action => action.type === "event_create" || action.type === "event_update")) current.setCalendarEvents(result.calendarEvents); current.setProjects(result.projects); current.setEntries(result.entries); }
     if(plan.sync && !plan.actions.length && !await cloud.saveNow()) throw new Error("Облако не подтвердило синхронизацию. Проверьте вход и подключение.");
   }
 

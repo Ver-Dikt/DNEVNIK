@@ -104,7 +104,7 @@ function DiaryConversation({ entries, projects, spaces, extras, syncMessage, sto
       const result=await response.json();
       if(requestGeneration!==generation.current) return;
       if(!response.ok) throw new Error(result.error ?? "Не удалось получить ответ");
-      const plan=validateAssistantPlan(result.plan,entries,question);
+      const plan=validateAssistantPlan(result.plan,entries,question,extras.calendarEvents);
       const target=navigationTarget(question,result.plan.navigate);
       if(target) onNavigate(target);
       const requestedEntry = typeof result.plan.openEntry === "string" && /(?:открой|покажи\s+(?:мне\s+)?(?:запись|карточку))/iu.test(question) && !/(?:как|не открывай|не надо)/iu.test(question) ? entries.find(entry => entry.id === result.plan.openEntry) : undefined;
@@ -133,6 +133,8 @@ function DiaryConversation({ entries, projects, spaces, extras, syncMessage, sto
   </aside>;
 }
 function describeAction(action: AssistantAction) {
+  if(action.type==="event_create") return `Добавить событие: ${action.event.title} · ${action.event.startDate}${action.event.startTime ? ` ${action.event.startTime}` : ""} · ${action.event.visibility === "shared" ? "общее" : "личное"}`;
+  if(action.type==="event_update") return `Изменить событие: ${action.title} · ${Object.entries(action.patch).map(([key,value])=>`${({title:"Название",startDate:"Дата начала",endDate:"Дата окончания",startTime:"Время начала",endTime:"Время окончания",allDay:"Весь день",notes:"Заметки",visibility:"Доступ"} as Record<string,string>)[key] ?? key}: ${typeof value === "boolean" ? value ? "да" : "нет" : value === "shared" ? "общее" : value === "private" ? "личное" : String(value)}`).join("; ")}`;
   if(action.type==="space") return `Создать раздел: ${action.name}`;
   if(action.type==="delete") return `Удалить запись: ${action.title}`;
   if(action.type==="project") return `Создать проект: ${action.path.join(" / ")}`;

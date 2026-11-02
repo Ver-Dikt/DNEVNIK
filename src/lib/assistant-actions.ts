@@ -1,10 +1,10 @@
-import type { DiaryEntry, ProjectNode, Space } from "./types";
+import type { CalendarEvent, DiaryEntry, ProjectNode, Space } from "./types";
 import { ensureProjectPath, normalizeKindPatch, organizeEntries } from "./organization";
 import { validateLocalProposal } from "./local-assistant";
 
-export type AssistantAction = { type: "update"; id: string; revision: number; title: string; patch: Partial<DiaryEntry> } | { type: "delete"; id: string; revision: number; title: string } | { type: "create"; entry: DiaryEntry; sourceId?: string; sourceRevision?: number } | { type: "project"; path: string[] } | { type: "space"; name: string };
+export type AssistantAction = { type: "update"; id: string; revision: number; title: string; patch: Partial<DiaryEntry> } | { type: "delete"; id: string; revision: number; title: string } | { type: "create"; entry: DiaryEntry; sourceId?: string; sourceRevision?: number } | { type: "project"; path: string[] } | { type: "space"; name: string } | { type: "event_create"; event: CalendarEvent } | { type: "event_update"; id: string; revision: number; title: string; patch: Partial<CalendarEvent> };
 export type AssistantPlan = { answer: string; actions: AssistantAction[]; sync: boolean };
-export function validateAssistantPlan(value: unknown, entries: DiaryEntry[], original: string): AssistantPlan {
+export function validateAssistantPlan(value: unknown, entries: DiaryEntry[], original: string, events: CalendarEvent[] = []): AssistantPlan {
   if (!value || typeof value !== "object") throw new Error("Модель не вернула план действий");
   const row = value as Record<string, unknown>;
   if (!Array.isArray(row.actions) || row.actions.length > 50) throw new Error("В одной команде допускается до 50 изменений");
@@ -12,6 +12,40 @@ export function validateAssistantPlan(value: unknown, entries: DiaryEntry[], ori
   const actions: AssistantAction[] = row.actions.map(item => {
     if (!item || typeof item !== "object") throw new Error("Некорректное действие");
     const action = item as Record<string, unknown>;
+    if (action.type === "event_create" || action.type === "event_update") {
+      const existing = action.type === "event_update" ? events.find(event => event.id === action.id) : undefined;
+      if (action.type === "event_update" && (!existing || seen.has(`event:${existing.id}`))) throw new Error("Событие не найдено или повторяется в плане");
+      if (existing) seen.add(`event:${existing.id}`);
+      if (!action.patch || typeof action.patch !== "object") throw new Error("Нет данных события");
+      const source = action.patch as Record<string, unknown>;
+      const patch: Partial<CalendarEvent> = {};
+      for (const field of ["title", "notes"] as const) if (source[field] !== undefined) {
+        if (typeof source[field] !== "string" || (field === "title" && !source[field].trim())) throw new Error("Некорректное название или заметка события");
+        patch[field] = source[field].slice(0, field === "title" ? 200 : 12000);
+      }
+      for (const field of ["startDate", "endDate"] as const) if (source[field] !== undefined) {
+        const date = source[field];
+        if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0,10) !== date) throw new Error("Некорректная дата события");
+        patch[field] = date;
+      }
+      for (const field of ["startTime", "endTime"] as const) if (source[field] !== undefined) {
+        if (typeof source[field] !== "string" || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(source[field])) throw new Error("Некорректное время события");
+        patch[field] = source[field];
+      }
+      if (source.allDay !== undefined) { if (typeof source.allDay !== "boolean") throw new Error("Некорректный признак события на весь день"); patch.allDay = source.allDay; }
+      else if (patch.startTime || patch.endTime) patch.allDay = false;
+      if (source.visibility !== undefined) { if (source.visibility !== "private" && source.visibility !== "shared") throw new Error("Некорректная видимость события"); patch.visibility = source.visibility; }
+      const start = patch.startDate ?? existing?.startDate; const end = patch.endDate ?? existing?.endDate;
+      if (end && start && end < start) throw new Error("Конец события раньше начала");
+      if (patch.allDay === true && (patch.startTime || patch.endTime)) throw new Error("Событие на весь день не должно содержать время");
+      const startTime = patch.startTime ?? existing?.startTime; const endTime = patch.endTime ?? existing?.endTime;
+      if (startTime && endTime && (!end || end === start) && endTime < startTime) throw new Error("Время окончания раньше начала события");
+      if (!Object.keys(patch).length) throw new Error("Нет изменений события");
+      if (existing) return { type: "event_update", id: existing.id, revision: existing.revision ?? 1, title: existing.title, patch };
+      if (!patch.title || !patch.startDate) throw new Error("Укажите название и дату события");
+      const now = new Date().toISOString();
+      return { type: "event_create", event: { ...patch, id:crypto.randomUUID(), title:patch.title, startDate:patch.startDate, allDay:patch.allDay ?? !patch.startTime, createdBy:"me", updatedBy:"me", visibility:patch.visibility ?? "private", createdAt:now, updatedAt:now, revision:1 } };
+    }
     if (action.type === "space") {
       if (typeof action.name !== "string" || !action.name.trim() || action.name.length > 100) throw new Error("Укажите название раздела");
       return { type: "space", name: action.name.trim() };
@@ -107,7 +141,7 @@ export function validateAssistantPlan(value: unknown, entries: DiaryEntry[], ori
   return { answer: typeof row.answer === "string" ? row.answer.slice(0, 4000) : "Проверьте изменения перед применением", actions, sync: row.sync === true };
 }
 
-export function applyAssistantPlan(plan: AssistantPlan, entries: DiaryEntry[], projects: ProjectNode[], spaces: Space[]) {
+export function applyAssistantPlan(plan: AssistantPlan, entries: DiaryEntry[], projects: ProjectNode[], spaces: Space[], events: CalendarEvent[] = []) {
   for (const action of plan.actions) if (action.type === "create" && action.sourceId) {
     const source = entries.find(entry => entry.id === action.sourceId);
     if (!source || (source.revision ?? 1) !== action.sourceRevision) throw new Error("Исходная запись изменилась после составления плана. Повторите разбор");
@@ -116,7 +150,10 @@ export function applyAssistantPlan(plan: AssistantPlan, entries: DiaryEntry[], p
   let next = [...entries];
   let nextProjects = [...projects];
   const nextSpaces = [...spaces];
+  let nextEvents = [...events];
   for (const action of plan.actions) {
+    if (action.type === "event_create") { if (nextEvents.some(event => event.id === action.event.id)) throw new Error("Этот план уже применён"); nextEvents.unshift(action.event); continue; }
+    if (action.type === "event_update") { const event = nextEvents.find(item => item.id === action.id); if (!event || (event.revision ?? 1) !== action.revision) throw new Error("Событие изменилось после составления плана"); nextEvents = nextEvents.map(item => item.id === action.id ? {...item,...action.patch,updatedAt:now,revision:(item.revision ?? 1)+1,updatedBy:"me"} : item); continue; }
     if (action.type === "space") { if (nextSpaces.some(space => space.name.trim().toLocaleLowerCase("ru-RU") === action.name.toLocaleLowerCase("ru-RU"))) throw new Error("Такой раздел уже существует"); nextSpaces.push({id:crypto.randomUUID(), name:action.name, createdAt:now, updatedAt:now, revision:1}); continue; }
     if (action.type === "project") { nextProjects = ensureProjectPath(action.path, nextProjects, nextSpaces, now).projects; continue; }
     if (action.type === "create") {
@@ -136,7 +173,7 @@ export function applyAssistantPlan(plan: AssistantPlan, entries: DiaryEntry[], p
     nextProjects = result.projects;
     return result.entries[0];
   });
-  return { entries: next, projects: nextProjects, spaces: nextSpaces };
+  return { entries: next, projects: nextProjects, spaces: nextSpaces, calendarEvents: nextEvents };
 }
 
 export function moveEntryToPath(entry: DiaryEntry, path: string[], projects: ProjectNode[], spaces: Space[]) {

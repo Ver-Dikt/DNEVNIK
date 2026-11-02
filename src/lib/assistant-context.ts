@@ -39,7 +39,7 @@ export function selectAssistantContext(data: Pick<DnevnikData, "entries" | "proj
     entries,
     projects: select(data.projects, 35, ({id,name,area,parentId,status}) => ({id,name,area,parentId,status})),
     spaces: select(data.spaces, 20, ({id,name}) => ({id,name})),
-    calendarEvents: select(data.calendarEvents, 10, ({id,title,startDate,endDate,startTime,notes}) => ({id,title,startDate,endDate,startTime,notes:notes?.slice(0,120)})),
+    calendarEvents: select(data.calendarEvents, 10, ({id,title,startDate,endDate,startTime,endTime,allDay,revision,notes}) => ({id,title,startDate,endDate,startTime,endTime,allDay,revision,notes:notes?.slice(0,120)})),
     importantDates: select(data.importantDates, 10, ({id,title,date,repeat,type,personName}) => ({id,title,date,repeat,type,personName})),
     documents: select(data.documents, 10, ({id,title,category,owner,note}) => ({id,title,category,owner,note:note?.slice(0,120)})),
     loyaltyCards: select(data.loyaltyCards, 10, ({id,title,owner}) => ({id,title,owner})),

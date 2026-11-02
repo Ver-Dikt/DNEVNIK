@@ -37,6 +37,17 @@ describe("project hierarchy", () => {
   it("converts purchase state when the record changes type", () => expect(normalizeKindPatch({...entry,kind:"purchase",status:"want_to_buy"},{kind:"note"}).status).toBe("active"));
 });
 describe("assistant commands", () => {
+  it("creates and edits calendar events, rejecting stale changes and invalid dates", () => {
+    const create=validateAssistantPlan({actions:[{type:"event_create",patch:{title:"Врач",startDate:"2026-11-10",startTime:"15:30",visibility:"shared"}}]},[],"Запиши встречу");
+    const first=applyAssistantPlan(create,[],[],spaces);
+    expect(first.calendarEvents[0]).toMatchObject({title:"Врач",startDate:"2026-11-10",allDay:false,visibility:"shared"});
+    const event=first.calendarEvents[0];
+    const update=validateAssistantPlan({actions:[{type:"event_update",id:event.id,patch:{startTime:"16:00"}}]},[],"Перенеси время",[event]);
+    expect(applyAssistantPlan(update,[],[],spaces,[event]).calendarEvents[0]).toMatchObject({startTime:"16:00",revision:2});
+    expect(()=>applyAssistantPlan(update,[],[],spaces,[{...event,revision:2}])).toThrow(/изменилось/);
+    expect(()=>validateAssistantPlan({actions:[{type:"event_create",patch:{title:"X",startDate:"2026-02-31"}}]},[],"добавь")).toThrow(/дата/);
+    expect(()=>validateAssistantPlan({actions:[{type:"event_create",patch:{title:"X",startDate:"2026-11-10",startTime:"15:00",endTime:"14:00"}}]},[],"добавь")).toThrow(/раньше/);
+  });
   it("preserves explicit quantities, prices, ownership and project paths", () => {
     const result=validateLocalProposal({items:[{kind:"purchase",title:"Краска",sourceText:"купить 2 банки краски по 500 рублей",area:"Дом",projectPath:["Дом","Ремонт","Кухня"],assignedTo:"shared"}]},"купить 2 банки краски по 500 рублей").items[0];
     expect(result.purchase?.quantity).toBe(2);expect(result.purchase?.unitPrice).toBe(500);expect(result.purchase?.totalPrice).toBe(1000);
